@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".activity.WelcomeActivity">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:orientation="vertical"
+        android:paddingHorizontal="50dp"
+        tools:ignore="UselessParent">
+
+        <ImageView
+            android:id="@+id/welcomeActivityLogo"
+            android:layout_width="100dp"
+            android:layout_height="100dp"
+            android:layout_gravity="center"
+            android:contentDescription="@string/ecotrekk_logo_content_description"
+            app:srcCompat="@mipmap/ic_launcher_round" />
+
+        <TextView
+            android:id="@+id/welcomeActivityTagline"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
+            android:text="@string/rent_explore_repeat_tagline"
+            android:textAlignment="center"
+            android:textSize="15sp" />
+
+
+        <ImageView
+            android:id="@+id/welcomeActivityWelcomeImage"
+            android:layout_width="match_parent"
+            android:layout_height="300dp"
+            android:layout_marginTop="10dp"
+            android:contentDescription="@string/welcome_image_content_description"
+            app:srcCompat="@drawable/welcome_hiker" />
+
+        <TextView
+            android:id="@+id/welcomeActivityHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="10dp"
+            android:text="@string/welcome_header_txt"
+            android:textAlignment="center"
+            android:textSize="30sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/welcomeActivitySubHeader"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
+            android:text="@string/welcome_subheader_txt"
+            android:textAlignment="center" />
+
+        <Button
+            android:id="@+id/welcomeActivitySignupBtn"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:checkable="true"
+            android:text="@string/signup_btn_txt" />
+
+        <Button
+            android:id="@+id/welcomeActivityLoginBtn"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
+            android:checkable="true"
+            android:text="@string/login_btn_txt"
+            android:textColor="@color/md_theme_primary"
+            android:textSize="15sp"
+            app:strokeColor="@color/md_theme_primary"
+            app:strokeWidth="2dp" />
+
+    </LinearLayout>
+
+
+</FrameLayout>

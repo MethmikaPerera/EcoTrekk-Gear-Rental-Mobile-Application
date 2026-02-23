@@ -1,3 +1,37 @@
 <resources>
     <string name="app_name">EcoTrekk</string>
+    <string name="ecotrekk_app_version">v 1.0.0</string>
+    <string name="ecotrekk_app_owner">EcoTrekk Adventures</string>
+    <string name="side_nav_home_txt">Home</string>
+    <string name="side_nav_myprofile_txt">My Profile</string>
+    <string name="side_nav_rentalhistory_txt">Rental History</string>
+    <string name="side_nav_wishlist_txt">Wishlist</string>
+    <string name="side_nav_cart_txt">Cart</string>
+    <string name="bottom_nav_home_txt">Home</string>
+    <string name="bottom_nav_hubs_txt">Hubs</string>
+    <string name="bottom_nav_gears_txt">Gears</string>
+    <string name="bottom_nav_cart_txt">Cart</string>
+    <string name="bottom_nav_profile_txt">Profile</string>
+    <string name="hello_blank_fragment">Hello blank fragment</string>
+    <string name="ecotrekk_logo_content_description">EcoTrekk Logo</string>
+    <string name="login_activity_header_txt">Welcome Back</string>
+    <string name="login_activity_subheader_txt">Sign In to Gear up for your adventure</string>
+    <string name="email_input_hint_txt">Email</string>
+    <string name="password_input_hint_txt">Password</string>
+    <string name="login_btn_txt">Log In</string>
+    <string name="forgot_password_txt">Forgot Password?</string>
+    <string name="dont_have_an_account_txt">Don\'t have an account?</string>
+    <string name="back_txt">Back</string>
+    <string name="rent_explore_repeat_tagline">Rent ▪ Explore ▪ Repeat</string>
+    <string name="welcome_header_txt">Adventure Starts Here</string>
+    <string name="welcome_subheader_txt">Rent quality outdoor gear for your next journey.</string>
+    <string name="signup_btn_txt">Create Account</string>
+    <string name="welcome_image_content_description">Welcome Image</string>
+    <string name="already_have_an_account_txt">Already have an account?</string>
+    <string name="i_agree_to_the_terms_and_conditions_txt">I agree to the Terms and Conditions</string>
+    <string name="confirm_password_input_hint_txt">Confirm Password</string>
+    <string name="phone_number_input_hint_txt">Phone Number</string>
+    <string name="name_input_hint_txt">Name</string>
+    <string name="signup_activity_header_txt">Create Account</string>
+    <string name="signup_activity_subheader_txt">Gear up for your next adventure</string>
 </resources>

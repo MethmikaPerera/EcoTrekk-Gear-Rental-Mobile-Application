@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/main"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    tools:context=".activity.SplashActivity">
+
+
+    <ImageView
+        android:id="@+id/splashScreenAppLogo"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        tools:srcCompat="@mipmap/ic_launcher_round" />
+
+    <TextView
+        android:id="@+id/splashScreenAppVersion"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="55dp"
+        android:text="@string/ecotrekk_app_version"
+        android:textColor="@color/material_dynamic_secondary70"
+        android:textSize="11sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/splashScreenAppCopyright"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="35dp"
+        android:text="@string/ecotrekk_app_owner"
+        android:textColor="@color/material_dynamic_secondary70"
+        android:textSize="11sp" />
+
+    <!-- Loading indicator with a container -->
+    <com.google.android.material.loadingindicator.LoadingIndicator
+        android:id="@+id/splashScreenProgressBar"
+        style="@style/Widget.Material3.LoadingIndicator.Contained"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_marginBottom="85dp"
+        android:visibility="invisible" />
+
+</FrameLayout>

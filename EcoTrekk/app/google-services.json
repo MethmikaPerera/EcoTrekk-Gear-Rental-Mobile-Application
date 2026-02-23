@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "231137288116",
+    "project_id": "ecotrekkapp",
+    "storage_bucket": "ecotrekkapp.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:231137288116:android:d36abe630a8d9a609e1ce1",
+        "android_client_info": {
+          "package_name": "com.akigen.ecotrekk"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBWZmBZ1u0j2bLwDIcG1zYqtQlQe9mavLI"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
