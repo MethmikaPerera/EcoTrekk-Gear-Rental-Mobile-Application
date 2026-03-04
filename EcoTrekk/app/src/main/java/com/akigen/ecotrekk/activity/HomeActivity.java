@@ -11,6 +11,7 @@ import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentContainerView;
 
 import com.akigen.ecotrekk.R;
+import com.akigen.ecotrekk.databinding.ActivityHomeBinding;
 import com.akigen.ecotrekk.fragment.CartFragment;
 import com.akigen.ecotrekk.fragment.GearsFragment;
 import com.akigen.ecotrekk.fragment.HomeFragment;
@@ -20,21 +21,17 @@ import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.navigation.NavigationBarView;
 
 public class HomeActivity extends AppCompatActivity implements NavigationBarView.OnItemSelectedListener {
-
-    private LinearLayout baseLayout;
+    private ActivityHomeBinding activityHomeBinding;
     private BottomNavigationView bottomNavigationView;
-    private FragmentContainerView fragmentContainerView;
 
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_home);
+        activityHomeBinding = ActivityHomeBinding.inflate(getLayoutInflater());
+        setContentView(activityHomeBinding.getRoot());
 
-        baseLayout = findViewById(R.id.homeActivityBaseLayout);
-        bottomNavigationView = findViewById(R.id.homeActivityBottomNavigationView);
-        fragmentContainerView = findViewById(R.id.homeActivityFragmentContainerView);
-
+        bottomNavigationView = activityHomeBinding.homeActivityBottomNavigationView;
         bottomNavigationView.setOnItemSelectedListener(this);
 
         if (savedInstanceState == null) {

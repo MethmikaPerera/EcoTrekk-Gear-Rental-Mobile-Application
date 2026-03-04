@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.util.Patterns;
 import android.widget.Toast;
 
@@ -75,6 +76,7 @@ public class LoginActivity extends AppCompatActivity {
                                     updateUI(user);
                                 } else {
                                     Toast.makeText(LoginActivity.this, "Authentication failed", Toast.LENGTH_SHORT).show();
+                                    Log.d("LoginActivity", "Authentication failed", task.getException());
                                     updateUI(null);
                                 }
                             }
