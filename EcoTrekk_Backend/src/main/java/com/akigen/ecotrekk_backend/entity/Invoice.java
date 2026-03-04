@@ -1,0 +1,62 @@
+package com.akigen.ecotrekk_backend.entity;
+
+import com.akigen.ecotrekk_backend.enums.OrderStatus;
+import com.akigen.ecotrekk_backend.enums.OrderType;
+import com.akigen.ecotrekk_backend.enums.PaymentStatus;
+import jakarta.persistence.*;
+import lombok.*;
+
+import java.math.BigDecimal;
+
+@Entity
+@Table(name = "invoices")
+@Getter
+@Setter
+@Builder
+@NoArgsConstructor
+@AllArgsConstructor
+public class Invoice extends AuditableEntity {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "invoice_code", nullable = false, length = 40, unique = true)
+    private String invoiceCode;
+
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id", nullable = false,
+            foreignKey = @ForeignKey(name = "fk_invoices_customer"))
+    private Customer customer;
+
+    @ManyToOne(optional = false, fetch = FetchType.LAZY)
+    @JoinColumn(name = "hub_id", nullable = false,
+            foreignKey = @ForeignKey(name = "fk_invoices_hub"))
+    private Hub hub;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "invoice_type", nullable = false, length = 20)
+    private OrderType invoiceType = OrderType.RENTAL_ONLY;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status", nullable = false, length = 30)
+    private OrderStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_status", nullable = false, length = 30)
+    private PaymentStatus paymentStatus;
+
+    @Builder.Default
+    @Column(name = "subtotal", nullable = false, precision = 12, scale = 2)
+    private BigDecimal subtotal = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "deposit_total", nullable = false, precision = 12, scale = 2)
+    private BigDecimal depositTotal = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
+    private BigDecimal totalAmount = BigDecimal.ZERO;
+
+}
