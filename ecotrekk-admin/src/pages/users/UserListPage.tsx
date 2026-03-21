@@ -1,13 +1,11 @@
 import { useMemo, useState } from 'react';
 import {
     Box, Card, Table, TableBody, TableCell, TableHead, TableRow, TextField,
-    Typography, IconButton, TablePagination, InputAdornment, FormControl,
+    Typography, TablePagination, InputAdornment, FormControl,
     InputLabel, Select, MenuItem, Button, Tooltip, Avatar, Chip, CircularProgress,
-    Stack,
+    Stack, Switch, styled,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
-import CheckCircleIcon from '@mui/icons-material/CheckCircle';
-import BlockIcon from '@mui/icons-material/Block';
 import PeopleIcon from '@mui/icons-material/People';
 import MailOutlineIcon from '@mui/icons-material/MailOutline';
 import PhoneInTalkOutlinedIcon from '@mui/icons-material/PhoneInTalkOutlined';
@@ -26,6 +24,51 @@ interface ApiErrorBody {
 }
 
 const avatarColors = ['#2D6A4F', '#D4830A', '#0277BD', '#6B3FA0', '#C62828', '#00695C'];
+
+const PremiumSwitch = styled(Switch)(({ theme }) => ({
+    width: 48,
+    height: 26,
+    padding: 0,
+    display: 'flex',
+    '&:active': {
+        '& .MuiSwitch-thumb': {
+            width: 28,
+        },
+        '& .MuiSwitch-switchBase.Mui-checked': {
+            transform: 'translateX(14px)',
+        },
+    },
+    '& .MuiSwitch-switchBase': {
+        padding: 3,
+        '&.Mui-checked': {
+            transform: 'translateX(22px)',
+            color: '#fff',
+            '& + .MuiSwitch-track': {
+                opacity: 1,
+                backgroundColor: theme.palette.success.main,
+            },
+        },
+        '&.Mui-focusVisible .MuiSwitch-thumb': {
+            color: theme.palette.success.main,
+            border: '6px solid #fff',
+        },
+    },
+    '& .MuiSwitch-thumb': {
+        boxShadow: '0 2px 6px 0 rgb(0 0 0 / 15%)',
+        width: 20,
+        height: 20,
+        borderRadius: 10,
+        transition: theme.transitions.create(['width'], {
+            duration: 200,
+        }),
+    },
+    '& .MuiSwitch-track': {
+        borderRadius: 26 / 2,
+        opacity: 1,
+        backgroundColor: 'rgba(0,0,0,.15)',
+        boxSizing: 'border-box',
+    },
+}));
 
 const UserListPage = () => {
     const { user } = useAuth();
@@ -241,29 +284,20 @@ const UserListPage = () => {
                                     </Typography>
                                 </TableCell>
                                 <TableCell align="center">
-                                    {user.active ? (
-                                        <Tooltip title="Deactivate user — prevents login" arrow>
-                                            <span>
-                                                <IconButton size="small" color="error"
+                                    <Tooltip title={user.active ? 'Deactivate account' : 'Activate account'} placement="top" arrow>
+                                        <Box component="span" sx={{ display: 'inline-flex' }}>
+                                            <PremiumSwitch
+                                                checked={user.active}
                                                 disabled={!canManageStatus}
-                                                onClick={() => setConfirmTarget({ id: user.id, name: user.fullName, action: 'INACTIVE' })}
-                                                sx={{ '&:hover': { bgcolor: 'error.50' } }}>
-                                                <BlockIcon fontSize="small" />
-                                                </IconButton>
-                                            </span>
-                                        </Tooltip>
-                                    ) : (
-                                        <Tooltip title="Activate user — restores access" arrow>
-                                            <span>
-                                                <IconButton size="small" color="success"
-                                                disabled={!canManageStatus}
-                                                onClick={() => setConfirmTarget({ id: user.id, name: user.fullName, action: 'ACTIVE' })}
-                                                sx={{ '&:hover': { bgcolor: 'success.50' } }}>
-                                                <CheckCircleIcon fontSize="small" />
-                                                </IconButton>
-                                            </span>
-                                        </Tooltip>
-                                    )}
+                                                onChange={(e) => setConfirmTarget({
+                                                    id: user.id,
+                                                    name: user.fullName,
+                                                    action: e.target.checked ? 'ACTIVE' : 'INACTIVE',
+                                                })}
+                                                inputProps={{ 'aria-label': 'customer status toggle' }}
+                                            />
+                                        </Box>
+                                    </Tooltip>
                                 </TableCell>
                             </TableRow>
                         ))}

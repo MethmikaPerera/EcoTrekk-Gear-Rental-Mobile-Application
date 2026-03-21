@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Client, IMessage } from '@stomp/stompjs';
 
 export interface RealtimeEvent {
@@ -10,10 +10,18 @@ export interface RealtimeEvent {
 type EventCallback = (event: RealtimeEvent) => void;
 
 type SubscriptionMap = Map<string, () => void>;
+type ConnectionListener = (connected: boolean) => void;
 
 // Global WebSocket client instance and subscriptions to avoid duplicate sockets
 let globalWebSocketClient: Client | null = null;
 const globalSubscriptions: SubscriptionMap = new Map();
+const connectionListeners = new Set<ConnectionListener>();
+let globalIsConnected = false;
+
+const notifyConnectionListeners = (connected: boolean) => {
+    globalIsConnected = connected;
+    connectionListeners.forEach((listener) => listener(connected));
+};
 
 const buildWebSocketUrl = () => {
     const apiBaseUrl = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8081').trim();
@@ -29,13 +37,20 @@ const buildWebSocketUrl = () => {
  */
 export const useWebSocket = () => {
     const [client, setClient] = useState<Client | null>(globalWebSocketClient);
-    const [isConnected, setIsConnected] = useState<boolean>(Boolean(globalWebSocketClient?.connected));
+    const [isConnected, setIsConnected] = useState<boolean>(globalIsConnected);
+
+    // Keep all hook instances in sync with shared websocket connection state.
+    useEffect(() => {
+        const listener: ConnectionListener = (connected) => setIsConnected(connected);
+        connectionListeners.add(listener);
+        return () => connectionListeners.delete(listener);
+    }, []);
     
     const connect = useCallback(() => {
         // Use global instance to prevent multiple connections
         if (globalWebSocketClient?.connected) {
             setClient(globalWebSocketClient);
-            setIsConnected(true);
+            notifyConnectionListeners(true);
             return;
         }
 
@@ -56,11 +71,11 @@ export const useWebSocket = () => {
             },
             onConnect: () => {
                 console.log('✓ WebSocket connected');
-                setIsConnected(true);
+                notifyConnectionListeners(true);
             },
             onDisconnect: () => {
                 console.log('✗ WebSocket disconnected');
-                setIsConnected(false);
+                notifyConnectionListeners(false);
             },
             onStompError: (frame) => {
                 console.error('STOMP error:', frame.body);
@@ -115,7 +130,7 @@ export const useWebSocket = () => {
         if (globalWebSocketClient?.connected) {
             globalWebSocketClient.deactivate();
         }
-        setIsConnected(false);
+        notifyConnectionListeners(false);
     }, []);
 
     return {
