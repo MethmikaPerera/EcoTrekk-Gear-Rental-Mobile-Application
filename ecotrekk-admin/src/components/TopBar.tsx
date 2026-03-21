@@ -11,9 +11,11 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import PersonIcon from '@mui/icons-material/Person';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import CircleIcon from '@mui/icons-material/Circle';
 import { useAuth } from '../context/AuthContext';
 import { useSnackbar } from 'notistack';
 import SessionTimer from './SessionTimer';
+import { useWebSocket } from '../hooks/useWebSocket';
 import axiosInstance from '../api/axiosInstance';
 
 const pageTitleMap: Record<string, string> = {
@@ -42,6 +44,7 @@ interface TopBarProps {
 
 const TopBar = ({ sidebarCollapsed, onToggleSidebar, onMobileMenuOpen }: TopBarProps) => {
     const { user, logout } = useAuth();
+    const { isConnected } = useWebSocket();
     const navigate = useNavigate();
     const location = useLocation();
     const { enqueueSnackbar } = useSnackbar();
@@ -117,6 +120,27 @@ const TopBar = ({ sidebarCollapsed, onToggleSidebar, onMobileMenuOpen }: TopBarP
                     {/* Right side */}
                     <Box display="flex" alignItems="center" gap={1.5}>
                         <SessionTimer />
+
+                        <Tooltip title={isConnected ? 'Realtime updates connected' : 'Realtime updates disconnected'}>
+                            <Chip
+                                icon={<CircleIcon sx={{ fontSize: '0.62rem !important' }} />}
+                                label={isConnected ? 'Live' : 'Offline'}
+                                size="small"
+                                sx={{
+                                    fontWeight: 700,
+                                    fontSize: '0.73rem',
+                                    display: { xs: 'none', sm: 'flex' },
+                                    bgcolor: isConnected ? 'rgba(22,163,74,0.10)' : 'rgba(217, 66, 6, 0.12)',
+                                    color: isConnected ? '#15803D' : '#b43109',
+                                    border: isConnected
+                                        ? '1px solid rgba(22,163,74,0.28)'
+                                        : '1px solid rgba(217,119,6,0.30)',
+                                    '& .MuiChip-icon': {
+                                        color: isConnected ? '#22C55E' : '#f53a0b',
+                                    },
+                                }}
+                            />
+                        </Tooltip>
 
                         {user && (
                             <Chip
