@@ -1,8 +1,9 @@
 package com.akigen.ecotrekk_backend.entity;
 
-import com.akigen.ecotrekk_backend.enums.GearType;
 import jakarta.persistence.*;
 import lombok.*;
+
+import java.math.BigDecimal;
 
 @Entity
 @Table(name = "gears")
@@ -20,10 +21,6 @@ public class Gear extends AuditableEntity {
     @JoinColumn(name = "category_id", nullable = false, foreignKey = @ForeignKey(name = "fk_gears_category"))
     private GearCategory category;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "gear_type", nullable = false, length = 20)
-    private GearType gearType;
-
     @Column(name = "name", nullable = false, length = 140)
     private String name;
 
@@ -31,14 +28,14 @@ public class Gear extends AuditableEntity {
     @Column(name = "description")
     private String description;
 
+    @Column(name = "daily_rent_price", nullable = false, precision = 10, scale = 2)
+    private BigDecimal dailyRentPrice;
+
+    @Builder.Default
+    @Column(name = "deposit_amount", nullable = false, precision = 10, scale = 2)
+    private BigDecimal depositAmount = BigDecimal.ZERO;
+
     @Builder.Default
     @Column(name = "is_active", nullable = false)
     private boolean active = true;
-
-    // subtype links
-    @OneToOne(mappedBy = "gear", cascade = CascadeType.ALL, orphanRemoval = true)
-    private RentalGearDetails rentalDetails;
-
-    @OneToOne(mappedBy = "gear", cascade = CascadeType.ALL, orphanRemoval = true)
-    private SaleGearDetails saleDetails;
 }

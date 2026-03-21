@@ -1,7 +1,7 @@
 package com.akigen.ecotrekk_backend.entity;
 
-import com.akigen.ecotrekk_backend.enums.OrderStatus;
-import com.akigen.ecotrekk_backend.enums.OrderType;
+import com.akigen.ecotrekk_backend.enums.InvoiceStatus;
+
 import com.akigen.ecotrekk_backend.enums.PaymentStatus;
 import jakarta.persistence.*;
 import lombok.*;
@@ -34,14 +34,9 @@ public class Invoice extends AuditableEntity {
             foreignKey = @ForeignKey(name = "fk_invoices_hub"))
     private Hub hub;
 
-    @Builder.Default
-    @Enumerated(EnumType.STRING)
-    @Column(name = "invoice_type", nullable = false, length = 20)
-    private OrderType invoiceType = OrderType.RENTAL_ONLY;
-
     @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false, length = 30)
-    private OrderStatus status;
+    private InvoiceStatus status;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_status", nullable = false, length = 30)

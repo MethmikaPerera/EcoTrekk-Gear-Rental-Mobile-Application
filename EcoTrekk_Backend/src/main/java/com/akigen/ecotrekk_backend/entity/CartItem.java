@@ -1,8 +1,9 @@
 package com.akigen.ecotrekk_backend.entity;
 
-import com.akigen.ecotrekk_backend.enums.CartItemType;
 import jakarta.persistence.*;
 import lombok.*;
+
+import java.time.LocalDate;
 
 @Entity
 @Table(name = "cart_items")
@@ -29,17 +30,13 @@ public class CartItem extends AuditableEntity {
     @JoinColumn(name = "gear_id", nullable = false, foreignKey = @ForeignKey(name = "fk_cart_items_gear"))
     private Gear gear;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "item_type", nullable = false, length = 20)
-    private CartItemType itemType;
-
     @Column(name = "qty", nullable = false)
     private int qty;
 
-    @OneToOne(mappedBy = "cartItem", cascade = CascadeType.ALL, orphanRemoval = true)
-    private RentalCartItemDetails rentalDetails;
+    @Column(name = "start_date", nullable = false)
+    private LocalDate startDate;
 
-    @OneToOne(mappedBy = "cartItem", cascade = CascadeType.ALL, orphanRemoval = true)
-    private SaleCartItemDetails saleDetails;
+    @Column(name = "end_date", nullable = false)
+    private LocalDate endDate;
 
 }

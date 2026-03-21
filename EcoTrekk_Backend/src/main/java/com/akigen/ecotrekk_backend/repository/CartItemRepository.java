@@ -1,15 +1,12 @@
 package com.akigen.ecotrekk_backend.repository;
 
 import com.akigen.ecotrekk_backend.entity.CartItem;
-import com.akigen.ecotrekk_backend.enums.CartItemType;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
 
 public interface CartItemRepository extends JpaRepository<CartItem, Long> {
     List<CartItem> findByCartId(Long cartId);
-
-    List<CartItem> findByCartIdAndItemType(Long cartId, CartItemType itemType);
 
     void deleteByCartId(Long cartId);
 }

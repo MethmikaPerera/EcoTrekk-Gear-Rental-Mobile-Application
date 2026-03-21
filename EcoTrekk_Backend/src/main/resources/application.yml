@@ -1,11 +1,12 @@
 server:
-  port: 8081
+  port: ${SERVER_PORT:8081}
 
 spring:
   datasource:
     url: jdbc:mysql://localhost:3306/ecotrekk?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=UTC
     username: root
     password: Akinda@2004
+    driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:
       ddl-auto: update
@@ -14,10 +15,32 @@ spring:
       hibernate:
         format_sql: true
         show_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+
+app:
+  firebase:
+    enabled: ${FIREBASE_ENABLED:true}
+    service-account-path: ${FIREBASE_SERVICE_ACCOUNT_PATH:firebase-service-account.json}
+  security:
+    jwt:
+      secret: ${ECOTREKK_JWT_SECRET:EcoTrekkS3cur3Jwt$ecr3tK3yhjuukkl2025nXyZ@qR7mN4pL8vW2aB5cD9eF3gH6jK1n}
+      expiration-in-seconds: ${ECOTREKK_JWT_EXPIRES:86400}
+      issuer: ${ECOTREKK_JWT_ISSUER:ecotrekk-admin}
+  admin:
+    bootstrap:
+      email: ${ADMIN_BOOTSTRAP_EMAIL:admin@ecotrekk.com}
+      full-name: ${ADMIN_BOOTSTRAP_FULL_NAME:EcoTrekk Super Admin}
+      password: ${ADMIN_BOOTSTRAP_PASSWORD:admin123}
+
+cloudinary:
+  cloud-name: ${CLOUDINARY_CLOUD_NAME:drzwswfsc}
+  api-key: ${CLOUDINARY_API_KEY:874265327783417}
+  api-secret: ${CLOUDINARY_API_SECRET:zVGpCaxK2RJ5a6e3tw8LU2lvvAY}
 
 logging:
   level:
     org.hibernate.SQL: debug
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
 
 springdoc:
   swagger-ui:

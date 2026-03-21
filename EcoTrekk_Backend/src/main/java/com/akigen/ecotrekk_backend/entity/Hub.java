@@ -21,19 +21,10 @@ public class Hub extends AuditableEntity {
     @Column(name = "name", nullable = false, length = 120)
     private String name;
 
-    @Column(name = "address_line1", nullable = false, length = 160)
-    private String addressLine1;
+    @Column(name = "address", nullable = false, length = 160)
+    private String address;
 
-    @Column(name = "address_line2", length = 160)
-    private String addressLine2;
-
-    @Column(name = "city", length = 80)
-    private String city;
-
-    @Column(name = "district", length = 80)
-    private String district;
-
-    @Column(name = "phone", length = 40)
+    @Column(name = "phone", nullable = false, length = 40)
     private String phone;
 
     @Column(name = "latitude", nullable = false, precision = 10, scale = 7)
@@ -42,10 +33,10 @@ public class Hub extends AuditableEntity {
     @Column(name = "longitude", nullable = false, precision = 10, scale = 7)
     private BigDecimal longitude;
 
-    @Column(name = "map_location_url", length = 500)
+    @Column(name = "map_location_url", nullable = false, length = 500)
     private String mapLocationUrl;
 
-    @Column(name = "image_url", length = 500)
+    @Column(name = "image_url", nullable = false, length = 500)
     private String imageUrl;
 
     @Builder.Default

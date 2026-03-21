@@ -7,6 +7,4 @@ import java.util.List;
 
 public interface HubRepository extends JpaRepository<Hub, Long> {
     List<Hub> findByActiveTrue();
-
-    List<Hub> findByCityIgnoreCaseAndActiveTrue(String city);
 }
