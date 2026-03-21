@@ -30,11 +30,50 @@ export interface PageResponse<T> {
     size: number;
 }
 
+export interface GearCategoryOption {
+    id: number;
+    name: string;
+    imageUrl?: string | null;
+}
+
+export interface GearCategoryUpsertRequest {
+    name: string;
+}
+
+export interface CreateGearRequest {
+    name: string;
+    categoryId: number;
+    description?: string;
+    dailyRentPrice: number;
+    depositAmount: number;
+    hubId: number;
+    availableCount: number;
+    active: boolean;
+}
+
 export const getGears = (params: GearListParams) =>
-    axiosInstance.get<PageResponse<Gear>>('/api/admin/gears', { params });
+    axiosInstance.get<PageResponse<Gear>>('/api/admin/gears', {
+        params,
+        suppressUnauthorizedEvent: true,
+    });
 
 export const getGearById = (id: string) =>
     axiosInstance.get<Gear>(`/api/admin/gears/${id}`);
+
+export const getGearCategories = () =>
+    axiosInstance.get<GearCategoryOption[]>('/api/admin/gears/categories');
+
+export const createGearCategory = (payload: GearCategoryUpsertRequest) =>
+    axiosInstance.post<GearCategoryOption>('/api/admin/gears/categories', payload);
+
+export const updateGearCategory = (categoryId: number, payload: GearCategoryUpsertRequest) =>
+    axiosInstance.put<GearCategoryOption>(`/api/admin/gears/categories/${categoryId}`, payload);
+
+export const deleteGearCategory = (categoryId: number) =>
+    axiosInstance.delete(`/api/admin/gears/categories/${categoryId}`);
+
+export const createAdminGear = (payload: CreateGearRequest) =>
+    axiosInstance.post('/api/admin/gears', payload);
 
 export const createGear = (data: Omit<Gear, 'id' | 'updatedAt'>) =>
     axiosInstance.post<Gear>('/api/admin/gears', data);

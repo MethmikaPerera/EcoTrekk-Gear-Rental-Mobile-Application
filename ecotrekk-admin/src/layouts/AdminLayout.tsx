@@ -3,6 +3,7 @@ import { Outlet } from 'react-router-dom';
 import { Box } from '@mui/material';
 import Sidebar from '../components/Sidebar';
 import TopBar from '../components/TopBar';
+import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 const DRAWER_WIDTH = 260;
 const DRAWER_COLLAPSED_WIDTH = 72;
@@ -10,6 +11,9 @@ const DRAWER_COLLAPSED_WIDTH = 72;
 const AdminLayout = () => {
     const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
     const [mobileOpen, setMobileOpen] = useState(false);
+    
+    // Initialize real-time data sync
+    useRealtimeSync();
 
     const currentWidth = sidebarCollapsed ? DRAWER_COLLAPSED_WIDTH : DRAWER_WIDTH;
 

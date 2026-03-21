@@ -1,78 +1,140 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
     Box, Card, Table, TableBody, TableCell, TableHead, TableRow, TextField,
     Typography, IconButton, TablePagination, InputAdornment, FormControl,
-    InputLabel, Select, MenuItem, Button, Tooltip, Avatar, Chip,
+    InputLabel, Select, MenuItem, Button, Tooltip, Avatar, Chip, CircularProgress,
+    Stack,
 } from '@mui/material';
 import SearchIcon from '@mui/icons-material/Search';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import BlockIcon from '@mui/icons-material/Block';
 import PeopleIcon from '@mui/icons-material/People';
+import MailOutlineIcon from '@mui/icons-material/MailOutline';
+import PhoneInTalkOutlinedIcon from '@mui/icons-material/PhoneInTalkOutlined';
 import { useSnackbar } from 'notistack';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { AxiosError } from 'axios';
 import PageHeader from '../../components/PageHeader';
 import StatusBadge from '../../components/StatusBadge';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import EmptyState from '../../components/EmptyState';
+import { getCustomers, patchCustomerStatus, CustomerUser } from '../../api/userApi';
+import { useAuth } from '../../context/AuthContext';
 
-const mockUsers = Array.from({ length: 35 }, (_, i) => ({
-    id: `usr-${100 + i}`,
-    name: ['Saman Silva', 'Priya Perera', 'Nimal Fernando', 'Dilini Jayasena', 'Kamal Bandara', 'Amara Kumari'][i % 6],
-    email: `user${i + 1}@example.com`,
-    phone: `+9471${String(Math.floor(1000000 + Math.random() * 9000000))}`,
-    status: i % 7 === 0 ? 'INACTIVE' : 'ACTIVE',
-    totalOrders: Math.floor(Math.random() * 15),
-    createdAt: new Date(Date.now() - i * 5 * 86400000).toISOString(),
-}));
+interface ApiErrorBody {
+    message?: string;
+}
 
 const avatarColors = ['#2D6A4F', '#D4830A', '#0277BD', '#6B3FA0', '#C62828', '#00695C'];
 
 const UserListPage = () => {
+    const { user } = useAuth();
     const { enqueueSnackbar } = useSnackbar();
-    const [users, setUsers] = useState(mockUsers);
+    const queryClient = useQueryClient();
+
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
     const [page, setPage] = useState(0);
-    const [rowsPerPage] = useState(10);
-    const [confirmTarget, setConfirmTarget] = useState<{ id: string; name: string; action: 'ACTIVE' | 'INACTIVE' } | null>(null);
+    const [rowsPerPage] = useState(12);
+    const [confirmTarget, setConfirmTarget] = useState<{ id: number; name: string; action: 'ACTIVE' | 'INACTIVE' } | null>(null);
     const [loading, setLoading] = useState(false);
+    const canManageStatus = user?.role === 'SUPER_ADMIN' || user?.role === 'ADMIN';
 
-    const filtered = users.filter((u) => {
-        const matchSearch = !search ||
-            u.name.toLowerCase().includes(search.toLowerCase()) ||
-            u.email.toLowerCase().includes(search.toLowerCase());
-        const matchStatus = !statusFilter || u.status === statusFilter;
-        return matchSearch && matchStatus;
+    const { data, isLoading } = useQuery({
+        queryKey: ['customers', page, rowsPerPage, search, statusFilter],
+        queryFn: () => getCustomers({
+            page,
+            size: rowsPerPage,
+            search: search || undefined,
+            status: (statusFilter || undefined) as 'ACTIVE' | 'INACTIVE' | undefined,
+        }),
     });
 
-    const paginated = filtered.slice(page * rowsPerPage, (page + 1) * rowsPerPage);
+    // Fetch all matching data for KPI statistics
+    const { data: statsData } = useQuery({
+        queryKey: ['customers-stats', search, statusFilter],
+        queryFn: () => getCustomers({
+            page: 0,
+            size: 9999,
+            search: search || undefined,
+            status: (statusFilter || undefined) as 'ACTIVE' | 'INACTIVE' | undefined,
+        }),
+        staleTime: 5 * 60 * 1000, // 5 minutes
+    });
+
+    const users = data?.data.content ?? [];
+    const totalElements = data?.data.totalElements ?? 0;
+
+    // Calculate stats from all matching data
+    const allMatchingUsers = statsData?.data.content ?? [];
+    const totalActiveCount = useMemo(() => allMatchingUsers.filter((u) => u.active).length, [allMatchingUsers]);
+    const totalInactiveCount = useMemo(() => allMatchingUsers.filter((u) => !u.active).length, [allMatchingUsers]);
+    const totalMatchingElements = statsData?.data.totalElements ?? totalElements;
+
+    // For current page display
+    const activeCount = useMemo(() => users.filter((u) => u.active).length, [users]);
+    const inactiveCount = useMemo(() => users.filter((u) => !u.active).length, [users]);
 
     const handleConfirmStatusChange = async () => {
         if (!confirmTarget) return;
         setLoading(true);
-        await new Promise((r) => setTimeout(r, 600));
-        setUsers((prev) => prev.map((u) => u.id === confirmTarget.id ? { ...u, status: confirmTarget.action } : u));
-        setLoading(false);
-        if (confirmTarget.action === 'INACTIVE') {
-            enqueueSnackbar(`"${confirmTarget.name}" has been deactivated.`, { variant: 'warning' });
-        } else {
-            enqueueSnackbar(`"${confirmTarget.name}" has been activated successfully.`, { variant: 'success' });
+        try {
+            await patchCustomerStatus(confirmTarget.id, confirmTarget.action);
+            if (confirmTarget.action === 'INACTIVE') {
+                enqueueSnackbar(`"${confirmTarget.name}" has been deactivated.`, { variant: 'warning' });
+            } else {
+                enqueueSnackbar(`"${confirmTarget.name}" has been activated successfully.`, { variant: 'success' });
+            }
+            queryClient.invalidateQueries({ queryKey: ['customers'] });
+            setConfirmTarget(null);
+        } catch (error) {
+            const apiError = error as AxiosError<ApiErrorBody>;
+            const apiMessage = apiError.response?.data?.message;
+            enqueueSnackbar(apiMessage || 'Failed to update user status.', { variant: 'error' });
+        } finally {
+            setLoading(false);
         }
-        setConfirmTarget(null);
     };
 
     const getInitials = (name: string) => name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2);
-    const activeCount = users.filter((u) => u.status === 'ACTIVE').length;
-    const inactiveCount = users.filter((u) => u.status === 'INACTIVE').length;
 
     return (
         <Box>
             <PageHeader
                 title="User Management"
-                subtitle={`${activeCount} active · ${inactiveCount} inactive`}
+                subtitle={`${totalElements} registered customers`}
                 breadcrumbs={[{ label: 'Home', to: '/dashboard' }, { label: 'Users' }]}
             />
 
-            {/* Filters */}
+            <Stack direction={{ xs: 'column', md: 'row' }} spacing={2} sx={{ mb: 2 }}>
+                <Card sx={{ flex: 1, p: 2.2, borderRadius: 2.5, background: 'linear-gradient(135deg, #0f5032 0%, #2b7f56 100%)', color: '#fff' }}>
+                    <Typography variant="caption" sx={{ opacity: 0.8, letterSpacing: 0.8 }}>TOTAL ACTIVE</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5 }}>
+                        <Typography variant="h4" fontWeight={800}>{totalActiveCount}</Typography>
+                        {totalMatchingElements > 0 && (
+                            <Typography variant="body2" sx={{ opacity: 0.9 }}>
+                                ({Math.round((totalActiveCount / totalMatchingElements) * 100)}%)
+                            </Typography>
+                        )}
+                    </Box>
+                </Card>
+                <Card sx={{ flex: 1, p: 2.2, borderRadius: 2.5, background: 'linear-gradient(135deg, #d4830a 0%, #f2b03b 100%)', color: '#2a1e04' }}>
+                    <Typography variant="caption" sx={{ opacity: 0.8, letterSpacing: 0.8 }}>TOTAL INACTIVE</Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5 }}>
+                        <Typography variant="h4" fontWeight={800}>{totalInactiveCount}</Typography>
+                        {totalMatchingElements > 0 && (
+                            <Typography variant="body2" sx={{ opacity: 0.7 }}>
+                                ({Math.round((totalInactiveCount / totalMatchingElements) * 100)}%)
+                            </Typography>
+                        )}
+                    </Box>
+                </Card>
+                <Card sx={{ flex: 1, p: 2.2, borderRadius: 2.5, background: 'linear-gradient(135deg, #f5f7fa 0%, #e6edf5 100%)' }}>
+                    <Typography variant="caption" color="text.secondary" sx={{ letterSpacing: 0.8 }}>TOTAL MATCHING USERS</Typography>
+                    <Typography variant="h4" fontWeight={800} color="text.primary">{totalMatchingElements}</Typography>
+                </Card>
+            </Stack>
+
             <Card sx={{ mb: 2 }}>
                 <Box sx={{ p: 2, display: 'flex', gap: 2, flexWrap: 'wrap', alignItems: 'center' }}>
                     <TextField
@@ -84,7 +146,7 @@ const UserListPage = () => {
                         InputProps={{ startAdornment: <InputAdornment position="start"><SearchIcon color="action" /></InputAdornment> }}
                     />
                     <FormControl sx={{ minWidth: 150 }}>
-                        <InputLabel>Status</InputLabel>
+                        <InputLabel sx={{ top: '-5px' }}>Status</InputLabel>
                         <Select value={statusFilter} label="Status" onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
                             <MenuItem value="">All</MenuItem>
                             <MenuItem value="ACTIVE">
@@ -107,7 +169,7 @@ const UserListPage = () => {
                         </Button>
                     )}
                     <Typography variant="body2" color="text.secondary" ml="auto" fontWeight={500}>
-                        {filtered.length} {filtered.length === 1 ? 'user' : 'users'}
+                        {totalElements} {totalElements === 1 ? 'user' : 'users'}
                     </Typography>
                 </Box>
             </Card>
@@ -119,16 +181,21 @@ const UserListPage = () => {
                             <TableCell>User</TableCell>
                             <TableCell>Email</TableCell>
                             <TableCell>Phone</TableCell>
-                            <TableCell>Orders</TableCell>
                             <TableCell>Status</TableCell>
                             <TableCell>Registered</TableCell>
                             <TableCell align="center">Actions</TableCell>
                         </TableRow>
                     </TableHead>
                     <TableBody>
-                        {paginated.length === 0 ? (
+                        {isLoading ? (
                             <TableRow>
-                                <TableCell colSpan={7}>
+                                <TableCell colSpan={6} align="center" sx={{ py: 8 }}>
+                                    <CircularProgress />
+                                </TableCell>
+                            </TableRow>
+                        ) : users.length === 0 ? (
+                            <TableRow>
+                                <TableCell colSpan={6}>
                                     <EmptyState
                                         icon={<PeopleIcon sx={{ fontSize: 36, color: 'grey.400' }} />}
                                         title={search || statusFilter ? 'No users match your search' : 'No users registered yet'}
@@ -136,7 +203,7 @@ const UserListPage = () => {
                                     />
                                 </TableCell>
                             </TableRow>
-                        ) : paginated.map((user, idx) => (
+                        ) : users.map((user: CustomerUser, idx) => (
                             <TableRow key={user.id} hover>
                                 <TableCell>
                                     <Box display="flex" alignItems="center" gap={1.5}>
@@ -145,42 +212,56 @@ const UserListPage = () => {
                                                 width: 40, height: 40, fontSize: '0.85rem', fontWeight: 700,
                                                 bgcolor: avatarColors[idx % avatarColors.length],
                                             }}
+                                            src={user.profilePictureUrl || undefined}
                                         >
-                                            {getInitials(user.name)}
+                                            {getInitials(user.fullName)}
                                         </Avatar>
                                         <Box>
-                                            <Typography variant="body2" fontWeight={600}>{user.name}</Typography>
-                                            <Typography variant="caption" color="text.secondary" fontFamily="monospace">{user.id}</Typography>
+                                            <Typography variant="body2" fontWeight={600}>{user.fullName}</Typography>
+                                            <Typography variant="caption" color="text.secondary" fontFamily="monospace">USR-{user.id}</Typography>
                                         </Box>
                                     </Box>
                                 </TableCell>
-                                <TableCell><Typography variant="body2">{user.email}</Typography></TableCell>
-                                <TableCell><Typography variant="body2" color="text.secondary">{user.phone}</Typography></TableCell>
                                 <TableCell>
-                                    <Chip label={`${user.totalOrders} orders`} size="small" variant="outlined" sx={{ borderRadius: 1, fontSize: '0.72rem' }} />
+                                    <Box display="flex" alignItems="center" gap={0.8}>
+                                        <MailOutlineIcon fontSize="small" color="action" />
+                                        <Typography variant="body2">{user.email}</Typography>
+                                    </Box>
                                 </TableCell>
-                                <TableCell><StatusBadge status={user.status} /></TableCell>
+                                <TableCell>
+                                    <Box display="flex" alignItems="center" gap={0.8}>
+                                        <PhoneInTalkOutlinedIcon fontSize="small" color="action" />
+                                        <Typography variant="body2" color="text.secondary">{user.phone || 'Not provided'}</Typography>
+                                    </Box>
+                                </TableCell>
+                                <TableCell><StatusBadge status={user.active ? 'ACTIVE' : 'INACTIVE'} /></TableCell>
                                 <TableCell>
                                     <Typography variant="body2" color="text.secondary">
                                         {new Date(user.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
                                     </Typography>
                                 </TableCell>
                                 <TableCell align="center">
-                                    {user.status === 'ACTIVE' ? (
+                                    {user.active ? (
                                         <Tooltip title="Deactivate user — prevents login" arrow>
-                                            <IconButton size="small" color="error"
-                                                onClick={() => setConfirmTarget({ id: user.id, name: user.name, action: 'INACTIVE' })}
+                                            <span>
+                                                <IconButton size="small" color="error"
+                                                disabled={!canManageStatus}
+                                                onClick={() => setConfirmTarget({ id: user.id, name: user.fullName, action: 'INACTIVE' })}
                                                 sx={{ '&:hover': { bgcolor: 'error.50' } }}>
                                                 <BlockIcon fontSize="small" />
-                                            </IconButton>
+                                                </IconButton>
+                                            </span>
                                         </Tooltip>
                                     ) : (
                                         <Tooltip title="Activate user — restores access" arrow>
-                                            <IconButton size="small" color="success"
-                                                onClick={() => setConfirmTarget({ id: user.id, name: user.name, action: 'ACTIVE' })}
+                                            <span>
+                                                <IconButton size="small" color="success"
+                                                disabled={!canManageStatus}
+                                                onClick={() => setConfirmTarget({ id: user.id, name: user.fullName, action: 'ACTIVE' })}
                                                 sx={{ '&:hover': { bgcolor: 'success.50' } }}>
                                                 <CheckCircleIcon fontSize="small" />
-                                            </IconButton>
+                                                </IconButton>
+                                            </span>
                                         </Tooltip>
                                     )}
                                 </TableCell>
@@ -190,12 +271,12 @@ const UserListPage = () => {
                 </Table>
                 <TablePagination
                     component="div"
-                    count={filtered.length}
+                    count={totalElements}
                     page={page}
                     onPageChange={(_, p) => setPage(p)}
                     rowsPerPage={rowsPerPage}
                     onRowsPerPageChange={() => { }}
-                    rowsPerPageOptions={[10]}
+                    rowsPerPageOptions={[12]}
                     labelRowsPerPage="Rows:"
                     labelDisplayedRows={({ from, to, count }) => `${from}–${to} of ${count} users`}
                 />

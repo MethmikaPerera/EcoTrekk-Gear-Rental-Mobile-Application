@@ -10,6 +10,7 @@ import {
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import VisibilityOffIcon from '@mui/icons-material/VisibilityOff';
 import LockOutlinedIcon from '@mui/icons-material/LockOutlined';
+import axios from 'axios';
 import { useAuth } from '../../context/AuthContext';
 import axiosInstance from '../../api/axiosInstance';
 
@@ -18,9 +19,6 @@ const schema = z.object({
     password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 type FormData = z.infer<typeof schema>;
-
-// Mock JWT for demo — encodes SUPER_ADMIN role
-const MOCK_JWT = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhZG1pbi0xIiwibmFtZSI6IkFsZXggR3JlZW4iLCJlbWFpbCI6ImFkbWluQGVjb3RyZWtrLmNvbSIsInJvbGUiOiJTVVBFUl9BRE1JTiIsImV4cCI6OTk5OTk5OTk5OX0.placeholder';
 
 const LoginPage = () => {
     const { login } = useAuth();
@@ -39,29 +37,21 @@ const LoginPage = () => {
         setLoading(true);
         setError('');
         try {
-            const res = await axiosInstance.post('/api/auth/admin/login', data);
+            const res = await axiosInstance.post('/api/auth/admin/login', data, {
+                skipAuth: true,
+            });
             login(res.data.token);
             navigate('/dashboard');
-        } catch {
-            // Demo fallback: accept demo credentials
-            if (data.email === 'admin@ecotrekk.com' && data.password === 'admin123') {
-                // Build a temporary mock token with claim fields
-                const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
-                const payload = btoa(JSON.stringify({
-                    sub: 'admin-1',
-                    name: 'Alex Green',
-                    email: data.email,
-                    role: 'SUPER_ADMIN',
-                    exp: Math.floor(Date.now() / 1000) + 86400,
-                }));
-                const mockToken = `${header}.${payload}.mock-signature`;
-                login(mockToken);
-                navigate('/dashboard');
+        } catch (err) {
+            if (axios.isAxiosError(err)) {
+                const message = err.response?.data?.message || 'Something went wrong.';
+                setError(message);
             } else {
-                setError('Invalid email or password. Use demo: admin@ecotrekk.com / admin123');
+                setError('Something went wrong. Please try again.');
             }
+        } finally {
+            setLoading(false);
         }
-        setLoading(false);
     };
 
     return (

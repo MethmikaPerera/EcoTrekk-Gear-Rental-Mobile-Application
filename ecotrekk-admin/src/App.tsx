@@ -5,6 +5,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { SnackbarProvider } from 'notistack';
 import theme from './theme';
 import { AuthProvider } from './context/AuthContext';
+import { WebSocketProvider } from './context/WebSocketProvider';
 import ProtectedRoute from './routes/ProtectedRoute';
 import AdminLayout from './layouts/AdminLayout';
 
@@ -12,12 +13,14 @@ import AdminLayout from './layouts/AdminLayout';
 import LoginPage from './pages/auth/LoginPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
 import GearListPage from './pages/inventory/GearListPage';
-import GearFormPage from './pages/inventory/GearFormPage';
 import HubListPage from './pages/hubs/HubListPage';
-import OrderListPage from './pages/orders/OrderListPage';
-import OrderDetailPage from './pages/orders/OrderDetailPage';
+import MyHubPage from './pages/hubs/MyHubPage';
+import OrderListPage from './pages/orders/OrderListPage.tsx';
+import OrderDetailPage from './pages/orders/OrderDetailPage.tsx';
 import UserListPage from './pages/users/UserListPage';
 import ReportsPage from './pages/reports/ReportsPage';
+import AdminListPage from './pages/admins/AdminListPage';
+import AdminProfilePage from './pages/profile/AdminProfilePage';
 
 
 const queryClient = new QueryClient({
@@ -33,33 +36,47 @@ function App() {
         <CssBaseline />
         <SnackbarProvider maxSnack={3} anchorOrigin={{ vertical: 'top', horizontal: 'right' }}>
           <AuthProvider>
-            <BrowserRouter>
-              <Routes>
-                {/* Public */}
-                <Route path="/login" element={<LoginPage />} />
+            <WebSocketProvider>
+              <BrowserRouter>
+                <Routes>
+                  {/* Public */}
+                  <Route path="/login" element={<LoginPage />} />
 
-                {/* Protected - any authenticated user */}
-                <Route element={<ProtectedRoute />}>
-                  <Route element={<AdminLayout />}>
-                    <Route path="/dashboard" element={<DashboardPage />} />
-                    <Route path="/inventory/gears" element={<GearListPage />} />
-                    <Route path="/inventory/gears/new" element={<GearFormPage />} />
-                    <Route path="/inventory/gears/:id/edit" element={<GearFormPage />} />
-                    <Route path="/inventory/hubs" element={<HubListPage />} />
-                    <Route path="/orders" element={<OrderListPage />} />
-                    <Route path="/orders/:id" element={<OrderDetailPage />} />
-                    <Route path="/users" element={<UserListPage />} />
-                    <Route path="/reports" element={<ReportsPage />} />
+                  {/* Protected - any authenticated user */}
+                  <Route element={<ProtectedRoute />}>
+                    <Route element={<AdminLayout />}>
+                      <Route path="/dashboard" element={<DashboardPage />} />
+                      <Route path="/inventory/gears" element={<GearListPage />} />
 
+                      {/* Hub pages by role */}
+                      <Route element={<ProtectedRoute requiredRoles={['SUPER_ADMIN']} />}>
+                        <Route path="/inventory/hubs" element={<HubListPage />} />
+                      </Route>
+                      <Route element={<ProtectedRoute requiredRoles={['ADMIN']} />}>
+                        <Route path="/inventory/my-hub" element={<MyHubPage />} />
+                      </Route>
 
+                      <Route path="/orders" element={<OrderListPage />} />
+                      <Route path="/orders/:id" element={<OrderDetailPage />} />
+                      <Route path="/users" element={<UserListPage />} />
+                      <Route path="/reports" element={<ReportsPage />} />
+
+                      {/* Highly Protected - SUPER_ADMIN ONLY */}
+                      <Route element={<ProtectedRoute requiredRoles={['SUPER_ADMIN']} />}>
+                          <Route path="/admins" element={<AdminListPage />} />
+                      </Route>
+
+                      {/* Common authenticated routes */}
+                      <Route path="/profile" element={<AdminProfilePage />} />
+                    </Route>
                   </Route>
-                </Route>
 
-                {/* Fallback */}
-                <Route path="*" element={<Navigate to="/dashboard" replace />} />
-                <Route path="/" element={<Navigate to="/dashboard" replace />} />
-              </Routes>
-            </BrowserRouter>
+                  {/* Fallback */}
+                  <Route path="*" element={<Navigate to="/dashboard" replace />} />
+                  <Route path="/" element={<Navigate to="/dashboard" replace />} />
+                </Routes>
+              </BrowserRouter>
+            </WebSocketProvider>
           </AuthProvider>
         </SnackbarProvider>
       </ThemeProvider>

@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { jwtDecode } from 'jwt-decode';
 
-export type AdminRole = 'SUPER_ADMIN' | 'INVENTORY_MANAGER' | 'ORDER_MANAGER' | 'SUPPORT_AGENT';
+export type AdminRole = 'SUPER_ADMIN' | 'ADMIN' | 'STAFF';
 
 export interface AdminUser {
     id: string;
@@ -14,10 +14,16 @@ export interface AdminUser {
 interface DecodedToken {
     sub: string;
     name?: string;
+    fullName?: string;
+    username?: string;
     email?: string;
     role?: AdminRole;
     exp: number;
 }
+
+const resolveDisplayName = (decoded: DecodedToken): string => {
+    return decoded.name || decoded.fullName || decoded.username || 'Admin';
+};
 
 interface AuthContextType {
     user: AdminUser | null;
@@ -42,9 +48,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
                 if (decoded.exp * 1000 > Date.now()) {
                     setUser({
                         id: decoded.sub,
-                        name: decoded.name || 'Admin',
+                        name: resolveDisplayName(decoded),
                         email: decoded.email || '',
-                        role: decoded.role || 'SUPPORT_AGENT',
+                        role: decoded.role || 'STAFF',
                         token,
                     });
                 } else {
@@ -57,14 +63,24 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         setIsLoading(false);
     }, []);
 
+    // Listen for 401 events dispatched by axiosInstance
+    useEffect(() => {
+        const handle401 = () => {
+            sessionStorage.removeItem('ecotrekk_token');
+            setUser(null);
+        };
+        window.addEventListener('ecotrekk:unauthorized', handle401);
+        return () => window.removeEventListener('ecotrekk:unauthorized', handle401);
+    }, []);
+
     const login = (token: string) => {
         try {
             const decoded = jwtDecode<DecodedToken>(token);
             const adminUser: AdminUser = {
                 id: decoded.sub,
-                name: decoded.name || 'Admin',
+                name: resolveDisplayName(decoded),
                 email: decoded.email || '',
-                role: decoded.role || 'SUPPORT_AGENT',
+                role: decoded.role || 'STAFF',
                 token,
             };
             sessionStorage.setItem('ecotrekk_token', token);

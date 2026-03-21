@@ -1,40 +1,118 @@
+import { useMemo, useState } from 'react';
 import {
-    Box, Card, CardContent, Grid, Typography, FormControl, InputLabel, Select, MenuItem,
+    Alert,
+    Box,
+    Card,
+    CardContent,
+    Chip,
+    CircularProgress,
+    Divider,
+    FormControl,
+    Grid,
+    InputLabel,
+    MenuItem,
+    Select,
+    Stack,
+    Typography,
 } from '@mui/material';
+import { useQuery } from '@tanstack/react-query';
 import {
     LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip,
     ResponsiveContainer, PieChart, Pie, Cell, Legend,
 } from 'recharts';
 import PageHeader from '../../components/PageHeader';
+import { getReportsAnalytics, type ReportPeriod } from '../../api/metricsApi';
 
-const weeklyOrders = [
-    { week: 'Week 1', orders: 38 }, { week: 'Week 2', orders: 52 },
-    { week: 'Week 3', orders: 47 }, { week: 'Week 4', orders: 63 },
-    { week: 'Week 5', orders: 71 }, { week: 'Week 6', orders: 58 },
-    { week: 'Week 7', orders: 84 }, { week: 'Week 8', orders: 77 },
+const PERIOD_OPTIONS: { value: ReportPeriod; label: string }[] = [
+    { value: 'THIS_WEEK', label: 'This Week' },
+    { value: 'THIS_MONTH', label: 'This Month' },
+    { value: 'LAST_3_MONTHS', label: 'Last 3 Months' },
+    { value: 'THIS_YEAR', label: 'This Year' },
 ];
 
-const revenueTrend = [
-    { month: 'Jul', revenue: 28000 }, { month: 'Aug', revenue: 35000 },
-    { month: 'Sep', revenue: 32000 }, { month: 'Oct', revenue: 41000 },
-    { month: 'Nov', revenue: 38000 }, { month: 'Dec', revenue: 55000 },
-    { month: 'Jan', revenue: 47000 }, { month: 'Feb', revenue: 48200 },
-];
+const HUB_COLORS = ['#1F4D3A', '#0F766E', '#65A30D', '#1D4ED8', '#92400E', '#BE123C'];
+const STATUS_COLORS: Record<string, string> = {
+    PENDING: '#F59E0B',
+    CONFIRMED: '#2563EB',
+    PICKED_UP: '#0F766E',
+    RETURNED: '#16A34A',
+    CANCELLED: '#DC2626',
+};
 
-const topGear = [
-    { name: 'Tent Pro X3', count: 87 }, { name: 'Backpack 60L', count: 74 },
-    { name: 'Sleeping Bag', count: 63 }, { name: 'Trekking Poles', count: 51 },
-    { name: 'Camp Stove', count: 44 }, { name: 'Headlamp', count: 38 },
-];
+const formatCurrency = (value: number) => `LKR ${value.toLocaleString()}`;
 
-const hubPie = [
-    { name: 'Colombo', value: 42, color: '#1F4D3A' },
-    { name: 'Kandy', value: 28, color: '#0F766E' },
-    { name: 'Galle', value: 18, color: '#65A30D' },
-    { name: 'Nuwara Eliya', value: 12, color: '#92400E' },
-];
+const formatPeriodRange = (start: string, end: string) => {
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    return `${startDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })} - ${endDate.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}`;
+};
+
+const formatTrend = (value: number) => `${value >= 0 ? '+' : ''}${value.toFixed(1)}%`;
+
+const prettyStatus = (status: string) =>
+    status.toLowerCase().split('_').map((part) => part[0].toUpperCase() + part.slice(1)).join(' ');
 
 const ReportsPage = () => {
+    const [period, setPeriod] = useState<ReportPeriod>('THIS_MONTH');
+
+    const {
+        data: analyticsResponse,
+        isLoading,
+        isError,
+    } = useQuery({
+        queryKey: ['reports-analytics', period],
+        queryFn: () => getReportsAnalytics(period),
+    });
+
+    const analytics = analyticsResponse?.data;
+
+    const hubPie = useMemo(
+        () =>
+            (analytics?.hubPerformance || []).map((hub, index) => ({
+                name: hub.name,
+                value: hub.orders,
+                color: HUB_COLORS[index % HUB_COLORS.length],
+            })),
+        [analytics],
+    );
+
+    const statusPie = useMemo(
+        () =>
+            (analytics?.statusBreakdown || [])
+                .filter((item) => item.count > 0)
+                .map((item) => ({
+                    name: prettyStatus(item.status),
+                    value: item.count,
+                    color: STATUS_COLORS[item.status] || '#64748B',
+                })),
+        [analytics],
+    );
+
+    const summaryCards = [
+        {
+            label: 'Total Orders',
+            value: analytics?.totalOrders ?? 0,
+            color: '#1F4D3A',
+            helper: formatTrend(analytics?.orderTrendPercent ?? 0),
+        },
+        {
+            label: 'Total Revenue',
+            value: formatCurrency(analytics?.totalRevenue ?? 0),
+            color: '#0F766E',
+            helper: formatTrend(analytics?.revenueTrendPercent ?? 0),
+        },
+        {
+            label: 'Avg Order Value',
+            value: formatCurrency(analytics?.averageOrderValue ?? 0),
+            color: '#334155',
+        },
+        {
+            label: 'Active Customers',
+            value: analytics?.activeCustomers ?? 0,
+            color: '#92400E',
+        },
+    ];
+
     return (
         <Box>
             <PageHeader
@@ -44,117 +122,185 @@ const ReportsPage = () => {
                 action={
                     <FormControl sx={{ minWidth: 140 }}>
                         <InputLabel>Period</InputLabel>
-                        <Select defaultValue="thisMonth" label="Period">
-                            <MenuItem value="thisWeek">This Week</MenuItem>
-                            <MenuItem value="thisMonth">This Month</MenuItem>
-                            <MenuItem value="last3months">Last 3 Months</MenuItem>
-                            <MenuItem value="thisYear">This Year</MenuItem>
+                        <Select
+                            value={period}
+                            label="Period"
+                            onChange={(event) => setPeriod(event.target.value as ReportPeriod)}
+                        >
+                            {PERIOD_OPTIONS.map((option) => (
+                                <MenuItem key={option.value} value={option.value}>{option.label}</MenuItem>
+                            ))}
                         </Select>
                     </FormControl>
                 }
             />
 
-            {/* Summary Chips */}
-            <Grid container spacing={2} mb={3}>
-                {[
-                    { label: 'Total Orders', value: '490', color: '#1F4D3A' },
-                    { label: 'Total Revenue', value: 'LKR 324,200', color: '#0F766E' },
-                    { label: 'Avg Order Value', value: 'LKR 2,450', color: '#334155' },
-                    { label: 'Active Customers', value: '312', color: '#92400E' },
-                ].map((s) => (
-                    <Grid key={s.label} size={{ xs: 6, md: 3 }}>
-                        <Card>
-                            <CardContent sx={{ p: 2, pb: '16px !important' }}>
-                                <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase">
-                                    {s.label}
-                                </Typography>
-                                <Typography variant="h5" fontWeight={800} mt={0.5} sx={{ color: s.color }}>
-                                    {s.value}
-                                </Typography>
-                            </CardContent>
-                        </Card>
+            {isError && (
+                <Alert severity="error" sx={{ mb: 2 }}>
+                    Analytics could not be loaded at the moment. Please try again.
+                </Alert>
+            )}
+
+            {analytics && (
+                <Card sx={{ mb: 2.5, background: 'linear-gradient(120deg, #ECF7F2 0%, #EFF6FF 100%)', border: '1px solid #DDECE6' }}>
+                    <CardContent sx={{ py: 1.8, '&:last-child': { pb: 1.8 } }}>
+                        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.2} alignItems={{ xs: 'flex-start', sm: 'center' }}>
+                            <Chip label={PERIOD_OPTIONS.find((option) => option.value === period)?.label} color="primary" size="small" />
+                            <Typography variant="body2" color="text.secondary">
+                                {formatPeriodRange(analytics.rangeStart, analytics.rangeEnd)}
+                            </Typography>
+                        </Stack>
+                    </CardContent>
+                </Card>
+            )}
+
+            {isLoading ? (
+                <Card>
+                    <CardContent sx={{ py: 8, display: 'flex', justifyContent: 'center', alignItems: 'center' }}>
+                        <CircularProgress />
+                    </CardContent>
+                </Card>
+            ) : (
+                <>
+                    <Grid container spacing={2} mb={3}>
+                        {summaryCards.map((s) => (
+                            <Grid key={s.label} size={{ xs: 12, sm: 6, lg: 3 }}>
+                                <Card>
+                                    <CardContent sx={{ p: 2.2, pb: '18px !important' }}>
+                                        <Typography variant="caption" color="text.secondary" fontWeight={700} textTransform="uppercase" letterSpacing="0.06em">
+                                            {s.label}
+                                        </Typography>
+                                        <Typography variant="h5" fontWeight={800} mt={0.7} sx={{ color: s.color }}>
+                                            {typeof s.value === 'number' ? s.value.toLocaleString() : s.value}
+                                        </Typography>
+                                        {s.helper && (
+                                            <Typography
+                                                variant="caption"
+                                                sx={{
+                                                    mt: 0.8,
+                                                    display: 'inline-flex',
+                                                    fontWeight: 700,
+                                                    color: s.helper.startsWith('+') ? 'success.main' : 'error.main',
+                                                }}
+                                            >
+                                                {s.helper} vs previous period
+                                            </Typography>
+                                        )}
+                                    </CardContent>
+                                </Card>
+                            </Grid>
+                        ))}
                     </Grid>
-                ))}
-            </Grid>
 
-            <Grid container spacing={2.5} mb={2.5}>
-                {/* Weekly Orders Bar */}
-                <Grid size={{ xs: 12, lg: 7 }}>
-                    <Card>
-                        <CardContent>
-                            <Typography variant="h6" fontWeight={700} mb={0.5}>Orders Per Week</Typography>
-                            <Typography variant="caption" color="text.secondary">Total rental orders placed per week</Typography>
-                            <ResponsiveContainer width="100%" height={240}>
-                                <BarChart data={weeklyOrders} barSize={24} style={{ marginTop: 16 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                                    <XAxis dataKey="week" tick={{ fontSize: 12 }} />
-                                    <YAxis tick={{ fontSize: 12 }} />
-                                    <Tooltip contentStyle={{ borderRadius: 8 }} />
-                                    <Bar dataKey="orders" fill="#2E7D5B" radius={[6, 6, 0, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </CardContent>
-                    </Card>
-                </Grid>
+                    <Grid container spacing={2.5} mb={2.5}>
+                        <Grid size={{ xs: 12, lg: 7 }}>
+                            <Card>
+                                <CardContent>
+                                    <Typography variant="h6" fontWeight={700} mb={0.5}>Orders Trend</Typography>
+                                    <Typography variant="caption" color="text.secondary">Order volume across the selected period</Typography>
+                                    <ResponsiveContainer width="100%" height={250}>
+                                        <BarChart data={analytics?.orderSeries || []} barSize={22} style={{ marginTop: 16 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                                            <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                                            <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                                            <Tooltip contentStyle={{ borderRadius: 8 }} formatter={(value) => [`${value} orders`, 'Orders']} />
+                                            <Bar dataKey="count" fill="#2E7D5B" radius={[6, 6, 0, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </CardContent>
+                            </Card>
+                        </Grid>
 
-                {/* Hub Pie */}
-                <Grid size={{ xs: 12, lg: 5 }}>
-                    <Card>
-                        <CardContent>
-                            <Typography variant="h6" fontWeight={700} mb={0.5}>Orders by Hub</Typography>
-                            <Typography variant="caption" color="text.secondary">Percentage distribution by rental hub</Typography>
-                            <ResponsiveContainer width="100%" height={240}>
-                                <PieChart>
-                                    <Pie data={hubPie} cx="50%" cy="50%" outerRadius={85} paddingAngle={3} dataKey="value" label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ''} ${((percent ?? 0) * 100).toFixed(0)}%`} labelLine={false}>
-                                        {hubPie.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
-                                    </Pie>
-                                    <Tooltip formatter={(v) => [`${v} orders`]} contentStyle={{ borderRadius: 8 }} />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </CardContent>
-                    </Card>
-                </Grid>
-            </Grid>
+                        <Grid size={{ xs: 12, lg: 5 }}>
+                            <Card>
+                                <CardContent>
+                                    <Typography variant="h6" fontWeight={700} mb={0.5}>Orders by Hub</Typography>
+                                    <Typography variant="caption" color="text.secondary">Hub contribution to total orders</Typography>
+                                    <ResponsiveContainer width="100%" height={250}>
+                                        <PieChart>
+                                            <Pie
+                                                data={hubPie}
+                                                cx="50%"
+                                                cy="50%"
+                                                outerRadius={82}
+                                                paddingAngle={3}
+                                                dataKey="value"
+                                                label={({ name, percent }: { name?: string; percent?: number }) => `${name ?? ''} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                                                labelLine={false}
+                                            >
+                                                {hubPie.map((entry, idx) => <Cell key={idx} fill={entry.color} />)}
+                                            </Pie>
+                                            <Tooltip formatter={(value) => [`${value} orders`, 'Orders']} contentStyle={{ borderRadius: 8 }} />
+                                            <Legend verticalAlign="bottom" />
+                                        </PieChart>
+                                    </ResponsiveContainer>
+                                </CardContent>
+                            </Card>
+                        </Grid>
+                    </Grid>
 
-            <Grid container spacing={2.5}>
-                {/* Revenue Trend Line */}
-                <Grid size={{ xs: 12, lg: 7 }}>
-                    <Card>
-                        <CardContent>
-                            <Typography variant="h6" fontWeight={700} mb={0.5}>Revenue Trend</Typography>
-                            <Typography variant="caption" color="text.secondary">Monthly revenue in LKR</Typography>
-                            <ResponsiveContainer width="100%" height={230}>
-                                <LineChart data={revenueTrend} style={{ marginTop: 16 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                                    <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                                    <Tooltip formatter={(v) => [`LKR ${(v as number).toLocaleString()}`]} contentStyle={{ borderRadius: 8 }} />
-                                    <Line type="monotone" dataKey="revenue" stroke="#D4830A" strokeWidth={3} dot={{ fill: '#D4830A', r: 5 }} />
-                                </LineChart>
-                            </ResponsiveContainer>
-                        </CardContent>
-                    </Card>
-                </Grid>
+                    <Grid container spacing={2.5}>
+                        <Grid size={{ xs: 12, lg: 7 }}>
+                            <Card>
+                                <CardContent>
+                                    <Typography variant="h6" fontWeight={700} mb={0.5}>Revenue Trend</Typography>
+                                    <Typography variant="caption" color="text.secondary">Revenue progression for the selected period</Typography>
+                                    <ResponsiveContainer width="100%" height={230}>
+                                        <LineChart data={analytics?.revenueSeries || []} style={{ marginTop: 16 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                                            <XAxis dataKey="label" tick={{ fontSize: 12 }} />
+                                            <YAxis tick={{ fontSize: 12 }} tickFormatter={(value) => `${(Number(value) / 1000).toFixed(0)}k`} />
+                                            <Tooltip formatter={(value) => [formatCurrency(Number(value)), 'Revenue']} contentStyle={{ borderRadius: 8 }} />
+                                            <Line type="monotone" dataKey="amount" stroke="#D4830A" strokeWidth={3} dot={{ fill: '#D4830A', r: 4 }} />
+                                        </LineChart>
+                                    </ResponsiveContainer>
+                                </CardContent>
+                            </Card>
+                        </Grid>
 
-                {/* Top Gear Bar */}
-                <Grid size={{ xs: 12, lg: 5 }}>
-                    <Card>
-                        <CardContent>
-                            <Typography variant="h6" fontWeight={700} mb={0.5}>Top Rented Gear</Typography>
-                            <Typography variant="caption" color="text.secondary">Items with highest rental frequency</Typography>
-                            <ResponsiveContainer width="100%" height={230}>
-                                <BarChart data={topGear} layout="vertical" barSize={16} style={{ marginTop: 16 }}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                                    <XAxis type="number" tick={{ fontSize: 11 }} />
-                                    <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={90} />
-                                    <Tooltip contentStyle={{ borderRadius: 8 }} />
-                                    <Bar dataKey="count" fill="#1F4D3A" radius={[0, 6, 6, 0]} />
-                                </BarChart>
-                            </ResponsiveContainer>
-                        </CardContent>
-                    </Card>
-                </Grid>
-            </Grid>
+                        <Grid size={{ xs: 12, lg: 5 }}>
+                            <Card sx={{ mb: 2.5 }}>
+                                <CardContent>
+                                    <Typography variant="h6" fontWeight={700} mb={0.5}>Top Rented Gear</Typography>
+                                    <Typography variant="caption" color="text.secondary">Most frequently rented items</Typography>
+                                    <ResponsiveContainer width="100%" height={230}>
+                                        <BarChart data={analytics?.topRentedGears || []} layout="vertical" barSize={16} style={{ marginTop: 16 }}>
+                                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                                            <XAxis type="number" tick={{ fontSize: 11 }} />
+                                            <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={120} />
+                                            <Tooltip contentStyle={{ borderRadius: 8 }} formatter={(value) => [`${value} rentals`, 'Count']} />
+                                            <Bar dataKey="count" fill="#1F4D3A" radius={[0, 6, 6, 0]} />
+                                        </BarChart>
+                                    </ResponsiveContainer>
+                                </CardContent>
+                            </Card>
+
+                            <Card>
+                                <CardContent>
+                                    <Typography variant="h6" fontWeight={700} mb={0.5}>Order Status Mix</Typography>
+                                    <Typography variant="caption" color="text.secondary">Distribution by current order status</Typography>
+                                    <Divider sx={{ my: 1.5 }} />
+                                    {statusPie.length === 0 ? (
+                                        <Typography variant="body2" color="text.secondary">No status distribution data available for this period.</Typography>
+                                    ) : (
+                                        <Stack spacing={1}>
+                                            {statusPie.map((item) => (
+                                                <Stack key={item.name} direction="row" justifyContent="space-between" alignItems="center">
+                                                    <Stack direction="row" alignItems="center" spacing={1}>
+                                                        <Box sx={{ width: 10, height: 10, borderRadius: '50%', bgcolor: item.color }} />
+                                                        <Typography variant="body2">{item.name}</Typography>
+                                                    </Stack>
+                                                    <Typography variant="body2" fontWeight={700}>{item.value}</Typography>
+                                                </Stack>
+                                            ))}
+                                        </Stack>
+                                    )}
+                                </CardContent>
+                            </Card>
+                        </Grid>
+                    </Grid>
+                </>
+            )}
         </Box>
     );
 };

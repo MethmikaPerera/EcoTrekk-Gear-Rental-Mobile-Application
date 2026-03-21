@@ -11,7 +11,8 @@ import BarChartIcon from '@mui/icons-material/BarChart';
 import ListAltIcon from '@mui/icons-material/ListAlt';
 
 import HubIcon from '@mui/icons-material/Store';
-import { useAuth } from '../context/AuthContext';
+import AdminPanelSettingsIcon from '@mui/icons-material/AdminPanelSettings';
+import { useAuth, AdminRole } from '../context/AuthContext';
 
 const DRAWER_WIDTH = 260;
 const DRAWER_COLLAPSED_WIDTH = 72;
@@ -20,15 +21,17 @@ interface NavItem {
     label: string;
     icon: React.ReactNode;
     path?: string;
-    requiredRole?: string[];
+    requiredRole?: AdminRole[];
 }
 
 const navItems: NavItem[] = [
     { label: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
     { label: 'Gears', icon: <ListAltIcon />, path: '/inventory/gears' },
-    { label: 'Rental Hubs', icon: <HubIcon />, path: '/inventory/hubs' },
+    { label: 'Rental Hubs', icon: <HubIcon />, path: '/inventory/hubs', requiredRole: ['SUPER_ADMIN'] },
+    { label: 'My Hub', icon: <HubIcon />, path: '/inventory/my-hub', requiredRole: ['ADMIN'] },
     { label: 'Orders', icon: <ShoppingCartIcon />, path: '/orders' },
     { label: 'Users', icon: <PeopleIcon />, path: '/users' },
+    { label: 'Admins', icon: <AdminPanelSettingsIcon />, path: '/admins', requiredRole: ['SUPER_ADMIN'] },
     { label: 'Reports', icon: <BarChartIcon />, path: '/reports' },
 
 ];

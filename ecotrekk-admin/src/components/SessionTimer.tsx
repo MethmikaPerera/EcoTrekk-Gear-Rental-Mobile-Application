@@ -43,31 +43,33 @@ const SessionTimer = () => {
         }
     }, [logout, navigate, enqueueSnackbar]);
 
+    const handleLogoutRef = useRef(handleLogout);
+    useEffect(() => { handleLogoutRef.current = handleLogout; }, [handleLogout]);
+
     useEffect(() => {
         if (!user?.token) return;
 
-        let sessionStart: number;
-        let totalDuration: number;
+        let tokenExp: number;
+        let tokenIat: number;
 
         try {
             const decoded = jwtDecode<DecodedToken>(user.token);
-            const now = Math.floor(Date.now() / 1000);
-            sessionStart = decoded.iat ?? now;
-            totalDuration = decoded.exp - sessionStart;
+            tokenExp = decoded.exp;
+            tokenIat = decoded.iat ?? Math.floor(Date.now() / 1000);
         } catch {
             return;
         }
 
         const tick = () => {
             const now = Math.floor(Date.now() / 1000);
-            const elapsedSecs = now - sessionStart;
-            const remaining = totalDuration - elapsedSecs;
+            const remaining = tokenExp - now;          // directly: seconds until expiry
+            const elapsedSecs = now - tokenIat;        // seconds since token was issued
 
-            setElapsed(elapsedSecs);
+            setElapsed(Math.max(0, elapsedSecs));
             setSecsLeft(Math.max(0, remaining));
 
             if (remaining <= 0) {
-                handleLogout('expired');
+                handleLogoutRef.current('expired');
                 return;
             }
             if (remaining <= WARN_SECONDS && !warnShown.current) {
@@ -76,10 +78,11 @@ const SessionTimer = () => {
             }
         };
 
+        warnShown.current = false;   // reset for new token
         tick();
         const interval = setInterval(tick, 1000);
         return () => clearInterval(interval);
-    }, [user?.token, handleLogout]);
+    }, [user?.token]);   // handleLogout intentionally excluded — accessed via ref
 
     if (!user) return null;
 

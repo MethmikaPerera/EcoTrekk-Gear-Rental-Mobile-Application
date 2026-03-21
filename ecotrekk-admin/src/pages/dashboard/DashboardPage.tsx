@@ -1,12 +1,10 @@
-import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     Grid, Card, CardContent, Typography, Box, Button, Avatar,
-    Table, TableBody, TableCell, TableHead, TableRow, Paper, Alert, Chip,
+    Table, TableBody, TableCell, TableHead, TableRow, Paper, Alert,
 } from '@mui/material';
 import {
-    LineChart, Line, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-    Tooltip, ResponsiveContainer, PieChart, Pie, Cell, Legend,
+    BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from 'recharts';
 import ShoppingCartIcon from '@mui/icons-material/ShoppingCart';
 import PendingActionsIcon from '@mui/icons-material/PendingActions';
@@ -19,44 +17,21 @@ import TrendingDownIcon from '@mui/icons-material/TrendingDown';
 import WbSunnyIcon from '@mui/icons-material/WbSunny';
 import NightsStayIcon from '@mui/icons-material/NightsStay';
 import LightModeIcon from '@mui/icons-material/LightMode';
+import WarningAmberRoundedIcon from '@mui/icons-material/WarningAmberRounded';
+import { useQuery } from '@tanstack/react-query';
+import './DashboardPage.css';
 import StatusBadge from '../../components/StatusBadge';
 import { useAuth } from '../../context/AuthContext';
+import { getMetricsSummary } from '../../api/metricsApi';
+import { getOrders, type OrderStatus } from '../../api/orderApi';
 
-// ─── Mock Data ────────────────────────────────────────────────────────────────
-const mockMetrics = {
-    totalOrdersToday: 24,
-    pendingOrders: 8,
-    lowStockItems: 5,
-    revenueToday: 3840,
+type DashboardRecentOrder = {
+    id: string;
+    customer: string;
+    gear: string;
+    status: OrderStatus;
+    total: number;
 };
-
-const weeklyOrders = [
-    { date: 'Mon', orders: 12 }, { date: 'Tue', orders: 19 },
-    { date: 'Wed', orders: 15 }, { date: 'Thu', orders: 27 },
-    { date: 'Fri', orders: 32 }, { date: 'Sat', orders: 41 },
-    { date: 'Sun', orders: 24 },
-];
-
-const revenueData = [
-    { month: 'Sep', revenue: 32000 }, { month: 'Oct', revenue: 38500 },
-    { month: 'Nov', revenue: 42000 }, { month: 'Dec', revenue: 55000 },
-    { month: 'Jan', revenue: 46000 }, { month: 'Feb', revenue: 48200 },
-];
-
-const hubPerformance = [
-    { name: 'Colombo Hub', value: 42, color: '#1F4D3A' },
-    { name: 'Kandy Hub', value: 28, color: '#0F766E' },
-    { name: 'Galle Hub', value: 18, color: '#65A30D' },
-    { name: 'Nuwara Hub', value: 12, color: '#92400E' },
-];
-
-const recentOrders = [
-    { id: 'ORD-1042', customer: 'Saman Silva', gear: 'Tent Pro X3', status: 'CONFIRMED', total: 2400 },
-    { id: 'ORD-1041', customer: 'Priya Perera', gear: 'Sleeping Bag', status: 'PENDING', total: 1200 },
-    { id: 'ORD-1040', customer: 'Nimal Fernando', gear: 'Backpack 60L', status: 'PICKED_UP', total: 900 },
-    { id: 'ORD-1039', customer: 'Dilini Jayasena', gear: 'Trekking Poles', status: 'RETURNED', total: 600 },
-    { id: 'ORD-1038', customer: 'Kamal Bandara', gear: 'Camping Stove', status: 'CANCELLED', total: 450 },
-];
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 const getGreeting = () => {
@@ -83,17 +58,29 @@ interface StatCardProps {
 const StatCard = ({ title, value, icon, color, trend, prefix, onClick }: StatCardProps) => (
     <Card
         sx={{
-            height: '100%', position: 'relative', overflow: 'hidden',
+            height: '100%',
+            position: 'relative',
+            overflow: 'hidden',
             cursor: onClick ? 'pointer' : 'default',
-            transition: 'transform 0.15s, box-shadow 0.15s',
-            '&:hover': onClick ? { transform: 'translateY(-2px)', boxShadow: '0 6px 20px rgba(0,0,0,0.12)' } : {},
+            transition: 'transform 0.2s ease, box-shadow 0.2s ease',
+            '&:hover': onClick
+                ? {
+                    transform: 'translateY(-2px)',
+                    boxShadow: '0 10px 20px rgba(10, 48, 41, 0.1)',
+                }
+                : {},
         }}
         onClick={onClick}
     >
         <Box
             sx={{
-                position: 'absolute', right: -16, top: -16, width: 90, height: 90,
-                borderRadius: '50%', background: `${color}14`,
+                position: 'absolute',
+                right: -18,
+                top: -18,
+                width: 108,
+                height: 108,
+                borderRadius: '50%',
+                background: `${color}18`,
             }}
         />
         <CardContent sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', p: 2.5 }}>
@@ -128,9 +115,40 @@ const DashboardPage = () => {
     const { user } = useAuth();
     const greeting = getGreeting();
 
+    const {
+        data: metricsResponse,
+        isLoading: isMetricsLoading,
+        isError: isMetricsError,
+    } = useQuery({
+        queryKey: ['dashboard-metrics'],
+        queryFn: getMetricsSummary,
+    });
+
+    const {
+        data: recentOrdersResponse,
+        isLoading: isRecentOrdersLoading,
+        isError: isRecentOrdersError,
+    } = useQuery({
+        queryKey: ['dashboard-recent-orders'],
+        queryFn: () => getOrders({ page: 0, size: 5 }),
+    });
+
+    const metrics = metricsResponse?.data;
+    const recentOrders: DashboardRecentOrder[] = (recentOrdersResponse?.data.content || []).map((order) => ({
+        id: order.id,
+        customer: order.customer.name,
+        gear: order.items[0]?.gearName || 'Multiple items',
+        status: order.status,
+        total: Number(order.totalAmount),
+    }));
+
+    const dailyOrderCounts = (metrics?.ordersThisWeek || []).map((item) => ({
+        day: item.date,
+        count: item.count,
+    }));
+
     return (
-        <Box>
-            {/* ── Welcome Banner ── */}
+        <Box className="dashboard-shell">
             <Card
                 sx={{
                     mb: 3,
@@ -140,10 +158,11 @@ const DashboardPage = () => {
                     position: 'relative',
                 }}
             >
-                {/* Background pattern */}
                 <Box
                     sx={{
-                        position: 'absolute', inset: 0, opacity: 0.06,
+                        position: 'absolute',
+                        inset: 0,
+                        opacity: 0.06,
                         backgroundImage: 'radial-gradient(circle at 2px 2px, white 1px, transparent 0)',
                         backgroundSize: '28px 28px',
                     }}
@@ -157,18 +176,24 @@ const DashboardPage = () => {
                                     {greeting.text}
                                 </Typography>
                             </Box>
-                            <Typography variant="h5" fontWeight={800} color="#fff" mb={0.5}>
-                                {user?.name || 'Admin'} 👋
+                            <Typography
+                                variant="h4"
+                                fontWeight={800}
+                                color="#fff"
+                                mb={0.6}
+                                sx={{ letterSpacing: '-0.01em' }}
+                            >
+                                {user?.name || 'Admin'}
                             </Typography>
                             <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
-                                {formatDate()} · Here's what's happening with EcoTrekk today.
+                                {formatDate()} · Here's a quick overview of your day.
                             </Typography>
                         </Box>
                         <Box display="flex" gap={1.5} flexWrap="wrap">
                             <Button
                                 variant="contained"
                                 startIcon={<AddIcon />}
-                                onClick={() => navigate('/inventory/gears/new')}
+                                onClick={() => navigate('/inventory/gears')}
                                 sx={{ bgcolor: 'rgba(255,255,255,0.2)', color: '#fff', '&:hover': { bgcolor: 'rgba(255,255,255,0.3)' }, backdropFilter: 'blur(4px)', fontWeight: 700 }}
                             >
                                 Add Gear
@@ -186,10 +211,16 @@ const DashboardPage = () => {
                 </CardContent>
             </Card>
 
-            {/* ── Pending alert ── */}
-            {mockMetrics.pendingOrders > 0 && (
+            {(isMetricsError || isRecentOrdersError) && (
+                <Alert severity="error" sx={{ mb: 2.5, borderRadius: 2 }}>
+                    Some dashboard data could not be loaded. Showing available data.
+                </Alert>
+            )}
+
+            {(metrics?.pendingOrders || 0) > 0 && (
                 <Alert
                     severity="warning"
+                    icon={<WarningAmberRoundedIcon />}
                     sx={{ mb: 2.5, borderRadius: 2 }}
                     action={
                         <Button color="warning" size="small" onClick={() => navigate('/orders?status=PENDING')}>
@@ -197,122 +228,83 @@ const DashboardPage = () => {
                         </Button>
                     }
                 >
-                    <strong>{mockMetrics.pendingOrders} orders</strong> are waiting for your confirmation.
+                    <strong>{metrics?.pendingOrders || 0} orders</strong> are waiting for your confirmation.
                 </Alert>
             )}
 
-            {/* ── Stat Cards ── */}
             <Grid container spacing={2.5} mb={3}>
                 <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
                     <StatCard
-                        title="Orders Today" value={mockMetrics.totalOrdersToday}
+                        title="Orders Today" value={metrics?.totalOrdersToday || 0}
                         icon={<ShoppingCartIcon />} color="#1F4D3A" trend={12}
                         onClick={() => navigate('/orders')}
                     />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
                     <StatCard
-                        title="Pending Orders" value={mockMetrics.pendingOrders}
+                        title="Pending Orders" value={metrics?.pendingOrders || 0}
                         icon={<PendingActionsIcon />} color="#D4830A" trend={-5}
                         onClick={() => navigate('/orders')}
                     />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
                     <StatCard
-                        title="Low Stock Items" value={mockMetrics.lowStockItems}
+                        title="Low Stock Items" value={metrics?.lowStockItems || 0}
                         icon={<InventoryIcon />} color="#D32F2F"
                         onClick={() => navigate('/inventory/gears')}
                     />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
                     <StatCard
-                        title="Revenue Today" value={mockMetrics.revenueToday}
+                        title="Revenue Today" value={metrics?.revenueToday || 0}
                         icon={<AttachMoneyIcon />} color="#0277BD" prefix="LKR " trend={8}
                     />
                 </Grid>
             </Grid>
 
-            {/* ── Charts Row ── */}
-            <Grid container spacing={2.5} mb={3}>
-                <Grid size={{ xs: 12, lg: 8 }}>
-                    <Card sx={{ height: '100%' }}>
+            <Grid container spacing={2.5}>
+                <Grid size={{ xs: 12, md: 5 }}>
+                    <Card>
                         <CardContent>
                             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                                 <Box>
-                                    <Typography variant="h6" fontWeight={700}>Orders This Week</Typography>
-                                    <Typography variant="caption" color="text.secondary">Daily rental orders placed</Typography>
+                                    <Typography variant="h6" fontWeight={700}>Daily Orders</Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        {isMetricsLoading ? 'Loading weekly analytics...' : 'Order count for each day of the week'}
+                                    </Typography>
                                 </Box>
-                                <Button size="small" endIcon={<ArrowForwardIcon />} onClick={() => navigate('/orders')}>
+                                <Button size="small" onClick={() => navigate('/orders')} endIcon={<ArrowForwardIcon />}>
                                     All Orders
                                 </Button>
                             </Box>
                             <ResponsiveContainer width="100%" height={220}>
-                                <LineChart data={weeklyOrders}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                                    <XAxis dataKey="date" tick={{ fontSize: 12 }} />
-                                    <YAxis tick={{ fontSize: 12 }} />
-                                    <Tooltip contentStyle={{ borderRadius: 8, border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }} />
-                                    <Line type="monotone" dataKey="orders" stroke="#1F4D3A" strokeWidth={3} dot={{ fill: '#1F4D3A', r: 5 }} activeDot={{ r: 7 }} />
-                                </LineChart>
-                            </ResponsiveContainer>
-                        </CardContent>
-                    </Card>
-                </Grid>
-
-                <Grid size={{ xs: 12, lg: 4 }}>
-                    <Card sx={{ height: '100%' }}>
-                        <CardContent>
-                            <Typography variant="h6" fontWeight={700} mb={0.5}>Hub Performance</Typography>
-                            <Typography variant="caption" color="text.secondary">Orders by rental hub</Typography>
-                            <ResponsiveContainer width="100%" height={220}>
-                                <PieChart>
-                                    <Pie data={hubPerformance} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={4} dataKey="value">
-                                        {hubPerformance.map((entry, index) => (
-                                            <Cell key={index} fill={entry.color} />
-                                        ))}
-                                    </Pie>
-                                    <Tooltip formatter={(v) => [`${v} orders`]} contentStyle={{ borderRadius: 8 }} />
-                                    <Legend iconType="circle" iconSize={10} formatter={(v) => <span style={{ fontSize: 12 }}>{v}</span>} />
-                                </PieChart>
-                            </ResponsiveContainer>
-                        </CardContent>
-                    </Card>
-                </Grid>
-            </Grid>
-
-            {/* ── Bottom Row ── */}
-            <Grid container spacing={2.5}>
-                <Grid size={{ xs: 12, lg: 5 }}>
-                    <Card>
-                        <CardContent>
-                            <Typography variant="h6" fontWeight={700} mb={0.5}>Revenue Trend</Typography>
-                            <Typography variant="caption" color="text.secondary">Last 6 months (LKR)</Typography>
-                            <ResponsiveContainer width="100%" height={200}>
-                                <BarChart data={revenueData} barSize={28}>
-                                    <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                                    <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                                    <YAxis tick={{ fontSize: 12 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-                                    <Tooltip formatter={(v) => [`LKR ${(v as number).toLocaleString()}`]} contentStyle={{ borderRadius: 8 }} />
-                                    <Bar dataKey="revenue" fill="#2E7D5B" radius={[6, 6, 0, 0]} />
+                                <BarChart data={dailyOrderCounts}>
+                                    <CartesianGrid strokeDasharray="3 3" stroke="#eef2f1" />
+                                    <XAxis dataKey="day" tick={{ fontSize: 12 }} />
+                                    <YAxis allowDecimals={false} tick={{ fontSize: 12 }} />
+                                    <Tooltip formatter={(value) => [`${value} orders`, 'Count']} />
+                                    <Bar dataKey="count" fill="#2E7D5B" radius={[6, 6, 0, 0]} />
                                 </BarChart>
                             </ResponsiveContainer>
                         </CardContent>
                     </Card>
                 </Grid>
 
-                <Grid size={{ xs: 12, lg: 7 }}>
+                <Grid size={{ xs: 12, md: 7 }}>
                     <Card>
                         <CardContent sx={{ pb: '16px !important' }}>
                             <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
                                 <Box>
                                     <Typography variant="h6" fontWeight={700}>Recent Orders</Typography>
-                                    <Typography variant="caption" color="text.secondary">Latest 5 rental orders</Typography>
+                                    <Typography variant="caption" color="text.secondary">
+                                        {isRecentOrdersLoading ? 'Loading recent orders...' : 'Latest 5 rental orders'}
+                                    </Typography>
                                 </Box>
                                 <Button size="small" variant="outlined" endIcon={<ArrowForwardIcon />} onClick={() => navigate('/orders')}>
                                     View All
                                 </Button>
                             </Box>
-                            <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden' }}>
+                            <Paper variant="outlined" sx={{ borderRadius: 2, overflow: 'hidden', borderColor: 'rgba(13, 47, 39, 0.14)' }}>
                                 <Table size="small">
                                     <TableHead>
                                         <TableRow>
@@ -327,7 +319,12 @@ const DashboardPage = () => {
                                             <TableRow
                                                 key={o.id} hover
                                                 onClick={() => navigate(`/orders/${o.id}`)}
-                                                sx={{ cursor: 'pointer' }}
+                                                sx={{
+                                                    cursor: 'pointer',
+                                                    '&:hover': {
+                                                        backgroundColor: 'rgba(16, 75, 61, 0.05)',
+                                                    },
+                                                }}
                                             >
                                                 <TableCell>
                                                     <Typography variant="body2" fontWeight={700} color="primary.main">{o.id}</Typography>
@@ -342,6 +339,13 @@ const DashboardPage = () => {
                                                 </TableCell>
                                             </TableRow>
                                         ))}
+                                        {!isRecentOrdersLoading && recentOrders.length === 0 && (
+                                            <TableRow>
+                                                <TableCell colSpan={4} align="center">
+                                                    <Typography variant="body2" color="text.secondary">No recent orders found.</Typography>
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
                                     </TableBody>
                                 </Table>
                             </Paper>

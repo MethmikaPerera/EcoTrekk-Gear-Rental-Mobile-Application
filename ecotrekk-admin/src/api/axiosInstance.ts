@@ -1,7 +1,12 @@
 import axios from 'axios';
 
+const API_BASE_URL = 'http://10.0.2.2:8081/api';
+// Use localhost if running admin web
+const isWeb = typeof window !== 'undefined';
+const baseURL = isWeb ? 'http://localhost:8081/api' : API_BASE_URL;
+
 const axiosInstance = axios.create({
-    baseURL: import.meta.env.VITE_API_BASE_URL || 'https://192.168.1.10:3000/ecotrekk-api/',
+    baseURL: import.meta.env.VITE_API_BASE_URL?.trim() || baseURL,
     timeout: 10000,
     headers: {
         'Content-Type': 'application/json',
@@ -11,9 +16,21 @@ const axiosInstance = axios.create({
 // Request interceptor - attach JWT token
 axiosInstance.interceptors.request.use(
     (config) => {
-        const token = sessionStorage.getItem('ecotrekk_token');
-        if (token) {
-            config.headers.Authorization = `Bearer ${token}`;
+        if (!config.skipAuth) {
+            const token = sessionStorage.getItem('ecotrekk_token');
+            if (token) {
+                if (config.headers.set) {
+                    config.headers.set('Authorization', `Bearer ${token}`);
+                } else {
+                    config.headers.Authorization = `Bearer ${token}`;
+                }
+            }
+        } else if (config.headers?.Authorization !== undefined) {
+            if (config.headers.delete) {
+                config.headers.delete('Authorization');
+            } else {
+                delete config.headers.Authorization;
+            }
         }
         return config;
     },
@@ -24,10 +41,10 @@ axiosInstance.interceptors.request.use(
 axiosInstance.interceptors.response.use(
     (response) => response,
     (error) => {
-        if (error.response?.status === 401) {
-            sessionStorage.removeItem('ecotrekk_token');
-            sessionStorage.removeItem('ecotrekk_user');
-            window.location.href = '/login';
+        const shouldSuppressUnauthorizedEvent = Boolean(error.config?.suppressUnauthorizedEvent);
+        if (error.response?.status === 401 && !shouldSuppressUnauthorizedEvent) {
+            // Dispatch a custom event — AuthContext will handle logout + redirect
+            window.dispatchEvent(new Event('ecotrekk:unauthorized'));
         }
         return Promise.reject(error);
     }
