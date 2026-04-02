@@ -17,11 +17,12 @@ public class GearAdminListItemDTO {
     private Long gearId;
     private String name;
     private String category;
+    private String imageUrl;
     private String description;
     private BigDecimal pricePerDay;
-    private int stock;
+    private BigDecimal depositAmount;
+    private int totalQty;
+    private int availableQty;
     private String status;
-    private Long hubId;
-    private String hubName;
     private Instant updatedAt;
 }

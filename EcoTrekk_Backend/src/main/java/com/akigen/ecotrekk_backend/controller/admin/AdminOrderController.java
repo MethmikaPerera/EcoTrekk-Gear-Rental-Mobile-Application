@@ -1,6 +1,7 @@
 package com.akigen.ecotrekk_backend.controller.admin;
 
 import com.akigen.ecotrekk_backend.dto.request.AdminOrderStatusUpdateRequestDTO;
+import com.akigen.ecotrekk_backend.dto.request.AdminOrderPaymentStatusUpdateRequestDTO;
 import com.akigen.ecotrekk_backend.dto.response.AdminOrderDTO;
 import com.akigen.ecotrekk_backend.dto.response.AdminOrderPageResponseDTO;
 import com.akigen.ecotrekk_backend.service.AdminOrderService;
@@ -52,6 +53,16 @@ public class AdminOrderController {
             @Valid @RequestBody AdminOrderStatusUpdateRequestDTO request
     ) {
         adminOrderService.updateOrderStatus(id, request);
+        return ResponseEntity.ok().build();
+    }
+
+    @PatchMapping("/{id}/payment-status")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN','ADMIN')")
+    public ResponseEntity<Void> updateOrderPaymentStatus(
+            @PathVariable String id,
+            @Valid @RequestBody AdminOrderPaymentStatusUpdateRequestDTO request
+    ) {
+        adminOrderService.updatePaymentStatus(id, request);
         return ResponseEntity.ok().build();
     }
 }

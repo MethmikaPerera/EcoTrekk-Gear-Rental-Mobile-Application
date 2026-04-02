@@ -1,7 +1,7 @@
 package com.akigen.ecotrekk_backend.entity;
 
 import com.akigen.ecotrekk_backend.enums.InvoiceStatus;
-
+import com.akigen.ecotrekk_backend.enums.PaymentMethod;
 import com.akigen.ecotrekk_backend.enums.PaymentStatus;
 import jakarta.persistence.*;
 import lombok.*;
@@ -30,8 +30,8 @@ public class Invoice extends AuditableEntity {
     private Customer customer;
 
     @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "hub_id", nullable = false,
-            foreignKey = @ForeignKey(name = "fk_invoices_hub"))
+    @JoinColumn(name = "collection_hub_id", nullable = false,
+            foreignKey = @ForeignKey(name = "fk_invoice_collection_hub"))
     private Hub hub;
 
     @Enumerated(EnumType.STRING)
@@ -41,6 +41,11 @@ public class Invoice extends AuditableEntity {
     @Enumerated(EnumType.STRING)
     @Column(name = "payment_status", nullable = false, length = 30)
     private PaymentStatus paymentStatus;
+
+    @Builder.Default
+    @Enumerated(EnumType.STRING)
+    @Column(name = "payment_method", nullable = false, length = 20)
+    private PaymentMethod paymentMethod = PaymentMethod.PAY_AT_HUB;
 
     @Builder.Default
     @Column(name = "subtotal", nullable = false, precision = 12, scale = 2)
@@ -53,5 +58,9 @@ public class Invoice extends AuditableEntity {
     @Builder.Default
     @Column(name = "total_amount", nullable = false, precision = 12, scale = 2)
     private BigDecimal totalAmount = BigDecimal.ZERO;
+
+    @Builder.Default
+    @Column(name = "inventory_allocated", nullable = false)
+    private boolean inventoryAllocated = false;
 
 }

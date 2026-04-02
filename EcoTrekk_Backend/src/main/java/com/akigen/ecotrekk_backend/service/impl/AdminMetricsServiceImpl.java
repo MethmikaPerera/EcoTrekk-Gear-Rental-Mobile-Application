@@ -5,7 +5,7 @@ import com.akigen.ecotrekk_backend.dto.response.AdminReportsAnalyticsDTO;
 import com.akigen.ecotrekk_backend.entity.Invoice;
 import com.akigen.ecotrekk_backend.entity.InvoiceItem;
 import com.akigen.ecotrekk_backend.enums.InvoiceStatus;
-import com.akigen.ecotrekk_backend.repository.HubInventoryRepository;
+import com.akigen.ecotrekk_backend.repository.InventoryRepository;
 import com.akigen.ecotrekk_backend.repository.HubManagerRepository;
 import com.akigen.ecotrekk_backend.repository.InvoiceItemRepository;
 import com.akigen.ecotrekk_backend.repository.InvoiceRepository;
@@ -42,7 +42,7 @@ public class AdminMetricsServiceImpl implements AdminMetricsService {
 
     private final InvoiceRepository invoiceRepository;
     private final InvoiceItemRepository invoiceItemRepository;
-    private final HubInventoryRepository hubInventoryRepository;
+    private final InventoryRepository inventoryRepository;
     private final HubManagerRepository hubManagerRepository;
 
     @Override
@@ -69,9 +69,7 @@ public class AdminMetricsServiceImpl implements AdminMetricsService {
                 ? invoiceRepository.countByStatus(InvoiceStatus.PENDING)
                 : invoiceRepository.countByStatusAndHubIdIn(InvoiceStatus.PENDING, scopedHubIds);
 
-        long lowStockItems = superAdmin
-                ? hubInventoryRepository.countByAvailableQtyLessThanEqual(LOW_STOCK_THRESHOLD)
-                : hubInventoryRepository.countByHubIdInAndAvailableQtyLessThanEqual(scopedHubIds, LOW_STOCK_THRESHOLD);
+        long lowStockItems = inventoryRepository.countByAvailableQtyLessThanEqual(LOW_STOCK_THRESHOLD);
 
         return AdminMetricsSummaryDTO.builder()
                 .totalOrdersToday(invoicesToday.size())

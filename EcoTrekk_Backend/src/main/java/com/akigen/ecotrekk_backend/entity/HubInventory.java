@@ -4,7 +4,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 @Entity
-@Table(name = "hub_inventory")
+@Table(name = "inventory")
 @Getter
 @Setter
 @Builder
@@ -16,8 +16,7 @@ public class HubInventory {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @ManyToOne(optional = false, fetch = FetchType.LAZY)
-    @JoinColumn(name = "hub_id", nullable = false, foreignKey = @ForeignKey(name = "fk_inventory_hub"))
+    @Transient
     private Hub hub;
 
     @ManyToOne(optional = false, fetch = FetchType.LAZY)

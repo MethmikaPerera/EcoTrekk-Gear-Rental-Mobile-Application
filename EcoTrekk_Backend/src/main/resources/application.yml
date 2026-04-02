@@ -31,6 +31,10 @@ app:
       email: ${ADMIN_BOOTSTRAP_EMAIL:admin@ecotrekk.com}
       full-name: ${ADMIN_BOOTSTRAP_FULL_NAME:EcoTrekk Super Admin}
       password: ${ADMIN_BOOTSTRAP_PASSWORD:admin123}
+  stripe:
+    secret-key: ${STRIPE_SECRET_KEY:sk_test_51TFe4bGVqrUXT7Yb7B8LV3oodH6zEje0MZqs1Ucojs7M0Hnc2HOCcTTEe9eLCbIvk19wjmTBlfqvRMLu2nK9rPvG00VDM6JsFe}
+    publishable-key: ${STRIPE_PUBLISHABLE_KEY:pk_test_51TFe4bGVqrUXT7YbqKv1bvHgOUX7AIff39vsxYvzLkIvqNanFHCNG2Fusiv8gfLlwomJkfQsIivlyTBctvVGZysQ00DPvcGKwL}
+    currency: ${STRIPE_CURRENCY:lkr}
 
 cloudinary:
   cloud-name: ${CLOUDINARY_CLOUD_NAME:drzwswfsc}

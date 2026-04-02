@@ -1,5 +1,7 @@
 package com.akigen.ecotrekk_backend.dto.response;
 
+import com.akigen.ecotrekk_backend.enums.PaymentMethod;
+import com.akigen.ecotrekk_backend.enums.PaymentStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -22,6 +24,8 @@ public class AdminOrderDTO {
     private LocalDate startDate;
     private LocalDate endDate;
     private String status;
+    private PaymentMethod paymentMethod;
+    private PaymentStatus paymentStatus;
     private List<AdminOrderItemDTO> items;
     private BigDecimal totalAmount;
     private Instant createdAt;

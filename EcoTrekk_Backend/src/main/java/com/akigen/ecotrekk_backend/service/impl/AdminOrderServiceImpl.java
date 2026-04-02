@@ -1,6 +1,7 @@
 package com.akigen.ecotrekk_backend.service.impl;
 
 import com.akigen.ecotrekk_backend.dto.request.AdminOrderStatusUpdateRequestDTO;
+import com.akigen.ecotrekk_backend.dto.request.AdminOrderPaymentStatusUpdateRequestDTO;
 import com.akigen.ecotrekk_backend.dto.response.AdminOrderCustomerDTO;
 import com.akigen.ecotrekk_backend.dto.response.AdminOrderDTO;
 import com.akigen.ecotrekk_backend.dto.response.AdminOrderItemDTO;
@@ -9,9 +10,13 @@ import com.akigen.ecotrekk_backend.dto.response.AdminOrderStatusHistoryDTO;
 import com.akigen.ecotrekk_backend.entity.Invoice;
 import com.akigen.ecotrekk_backend.entity.InvoiceItem;
 import com.akigen.ecotrekk_backend.enums.InvoiceStatus;
+import com.akigen.ecotrekk_backend.enums.PaymentMethod;
+import com.akigen.ecotrekk_backend.enums.PaymentStatus;
+import com.akigen.ecotrekk_backend.repository.InventoryRepository;
 import com.akigen.ecotrekk_backend.repository.InvoiceItemRepository;
 import com.akigen.ecotrekk_backend.repository.InvoiceRepository;
 import com.akigen.ecotrekk_backend.service.AdminOrderService;
+import com.akigen.ecotrekk_backend.service.NotificationService;
 import com.akigen.ecotrekk_backend.service.RealtimeEventPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -21,6 +26,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
@@ -33,11 +39,14 @@ import java.util.Locale;
 @Service
 @RequiredArgsConstructor
 @Slf4j
+@Transactional(readOnly = true)
 public class AdminOrderServiceImpl implements AdminOrderService {
 
     private final InvoiceRepository invoiceRepository;
     private final InvoiceItemRepository invoiceItemRepository;
+    private final InventoryRepository inventoryRepository;
     private final RealtimeEventPublisher realtimeEventPublisher;
+    private final NotificationService notificationService;
 
     @Override
     public AdminOrderPageResponseDTO getOrders(int page, int size, String status, String search, LocalDate startDate, LocalDate endDate) {
@@ -67,16 +76,95 @@ public class AdminOrderServiceImpl implements AdminOrderService {
     }
 
     @Override
+    @Transactional
     public void updateOrderStatus(String id, AdminOrderStatusUpdateRequestDTO request) {
         Invoice invoice = findByExternalId(id);
         InvoiceStatus newStatus = parseUpdateStatus(request.getStatus());
+        InvoiceStatus oldStatus = invoice.getStatus();
+
+        if (newStatus == InvoiceStatus.PICKED_UP && invoice.getPaymentStatus() != PaymentStatus.PAID) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Order payment must be marked as PAID before pickup");
+        }
+
+        handleInventoryTransitions(invoice, newStatus);
 
         invoice.setStatus(newStatus);
         invoiceRepository.save(invoice);
 
-        log.info("Order {} status updated to {}", id, newStatus);
+        log.info("Order {} status updated from {} to {}", id, oldStatus, newStatus);
+        
+        // Send notification for order approval
+        if (newStatus == InvoiceStatus.APPROVED) {
+            try {
+                notificationService.sendOrderApprovalNotification(invoice);
+                log.info("Approval notification sent for order: {}", id);
+            } catch (Exception e) {
+                log.error("Failed to send approval notification for order: {}", id, e);
+                // Don't fail the order update if notification fails
+            }
+        } else {
+            // Send general status update notification
+            try {
+                notificationService.sendOrderStatusNotification(invoice, newStatus.name());
+                log.info("Status update notification sent for order: {}", id);
+            } catch (Exception e) {
+                log.error("Failed to send status notification for order: {}", id, e);
+                // Don't fail the order update if notification fails
+            }
+        }
         
         // Publish real-time event
+        AdminOrderDTO updatedOrder = mapToOrderWithDetails(invoice);
+        realtimeEventPublisher.publishOrderEvent("ORDER_UPDATED", updatedOrder);
+    }
+
+    private void handleInventoryTransitions(Invoice invoice, InvoiceStatus newStatus) {
+        // Return: Add back to inventory when completed or cancelled
+        if ((newStatus == InvoiceStatus.COMPLETED || newStatus == InvoiceStatus.CANCELLED) 
+                && invoice.isInventoryAllocated()) {
+            releaseInventory(invoice);
+        }
+    }
+
+
+
+    private void releaseInventory(Invoice invoice) {
+        List<InvoiceItem> items = invoiceItemRepository.findByInvoiceId(invoice.getId());
+        for (InvoiceItem item : items) {
+            com.akigen.ecotrekk_backend.entity.Inventory inventory = inventoryRepository.findByGearId(item.getGear().getId())
+                    .stream().findFirst().orElse(null);
+
+            if (inventory != null) {
+                int newQty = Math.min(inventory.getTotalQty(), inventory.getAvailableQty() + item.getQty());
+                inventory.setAvailableQty(newQty);
+                inventoryRepository.save(inventory);
+                log.info("Released {} units of gear {} from invoice {}", item.getQty(), item.getGear().getId(), invoice.getInvoiceCode());
+            }
+        }
+        invoice.setInventoryAllocated(false);
+    }
+
+    @Override
+    @Transactional
+    public void updatePaymentStatus(String id, AdminOrderPaymentStatusUpdateRequestDTO request) {
+        Invoice invoice = findByExternalId(id);
+
+        if (invoice.getPaymentMethod() != PaymentMethod.PAY_AT_HUB) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Only Pay at Hub orders can be updated manually");
+        }
+
+        PaymentStatus oldStatus = invoice.getPaymentStatus();
+        PaymentStatus newStatus = Boolean.TRUE.equals(request.getPaid()) ? PaymentStatus.PAID : PaymentStatus.UNPAID;
+
+        if (oldStatus == newStatus) {
+            return;
+        }
+
+        invoice.setPaymentStatus(newStatus);
+        invoiceRepository.save(invoice);
+
+        log.info("Order {} payment status updated from {} to {}", id, oldStatus, newStatus);
+
         AdminOrderDTO updatedOrder = mapToOrderWithDetails(invoice);
         realtimeEventPublisher.publishOrderEvent("ORDER_UPDATED", updatedOrder);
     }
@@ -142,6 +230,8 @@ public class AdminOrderServiceImpl implements AdminOrderService {
                 .startDate(startDate)
                 .endDate(endDate)
                 .status(toFrontendStatus(invoice.getStatus()))
+                .paymentMethod(invoice.getPaymentMethod())
+                .paymentStatus(invoice.getPaymentStatus())
                 .items(orderItems)
                 .totalAmount(invoice.getTotalAmount())
                 .createdAt(invoice.getCreatedAt())

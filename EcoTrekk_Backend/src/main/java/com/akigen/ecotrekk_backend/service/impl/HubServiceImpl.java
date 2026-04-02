@@ -3,6 +3,7 @@ package com.akigen.ecotrekk_backend.service.impl;
 import com.akigen.ecotrekk_backend.dto.request.HubUpsertRequestDTO;
 import com.akigen.ecotrekk_backend.dto.response.HubAdminResponseDTO;
 import com.akigen.ecotrekk_backend.dto.response.HubResponseDTO;
+import com.akigen.ecotrekk_backend.dto.response.PublicHubResponseDTO;
 import com.akigen.ecotrekk_backend.entity.Hub;
 import com.akigen.ecotrekk_backend.entity.HubManager;
 import com.akigen.ecotrekk_backend.repository.HubManagerRepository;
@@ -34,6 +35,22 @@ public class HubServiceImpl implements HubService {
                         .build())
                 .toList();
     }
+
+        @Override
+        public List<PublicHubResponseDTO> getAllPublicActiveHubs() {
+        return hubRepository.findByActiveTrue().stream()
+            .map(hub -> PublicHubResponseDTO.builder()
+                .id(hub.getId())
+                .name(hub.getName())
+                .address(hub.getAddress())
+                .phone(hub.getPhone())
+                .latitude(hub.getLatitude())
+                .longitude(hub.getLongitude())
+                .mapLocationUrl(hub.getMapLocationUrl())
+                .imageUrl(hub.getImageUrl())
+                .build())
+            .toList();
+        }
 
     @Override
     @Transactional(readOnly = true)

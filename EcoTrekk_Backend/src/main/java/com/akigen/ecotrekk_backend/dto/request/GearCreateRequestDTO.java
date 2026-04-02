@@ -34,7 +34,7 @@ public class GearCreateRequestDTO {
     @DecimalMin(value = "0.0", inclusive = true, message = "Deposit amount must be non-negative")
     private BigDecimal depositAmount;
 
-    @NotNull(message = "Hub ID is required")
+    // Kept for frontend compatibility; current inventory model is global (not per-hub).
     private Long hubId;
 
     @NotNull(message = "Available count is required")

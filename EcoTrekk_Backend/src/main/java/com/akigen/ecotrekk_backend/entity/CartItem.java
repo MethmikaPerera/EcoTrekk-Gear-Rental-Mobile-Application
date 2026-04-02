@@ -3,8 +3,6 @@ package com.akigen.ecotrekk_backend.entity;
 import jakarta.persistence.*;
 import lombok.*;
 
-import java.time.LocalDate;
-
 @Entity
 @Table(name = "cart_items")
 @Getter
@@ -32,11 +30,5 @@ public class CartItem extends AuditableEntity {
 
     @Column(name = "qty", nullable = false)
     private int qty;
-
-    @Column(name = "start_date", nullable = false)
-    private LocalDate startDate;
-
-    @Column(name = "end_date", nullable = false)
-    private LocalDate endDate;
 
 }

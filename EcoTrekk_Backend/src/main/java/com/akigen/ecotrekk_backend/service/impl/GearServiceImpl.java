@@ -1,20 +1,22 @@
 package com.akigen.ecotrekk_backend.service.impl;
 
-import com.akigen.ecotrekk_backend.dto.request.GearCreateRequestDTO;
 import com.akigen.ecotrekk_backend.dto.request.GearCategoryUpsertRequestDTO;
+import com.akigen.ecotrekk_backend.dto.request.GearCreateRequestDTO;
 import com.akigen.ecotrekk_backend.dto.response.GearAdminListItemDTO;
 import com.akigen.ecotrekk_backend.dto.response.GearCategoryOptionDTO;
 import com.akigen.ecotrekk_backend.dto.response.GearPageResponseDTO;
+import com.akigen.ecotrekk_backend.dto.response.PublicFeaturedGearDTO;
 import com.akigen.ecotrekk_backend.entity.Gear;
 import com.akigen.ecotrekk_backend.entity.GearCategory;
-import com.akigen.ecotrekk_backend.entity.Hub;
-import com.akigen.ecotrekk_backend.entity.HubInventory;
+import com.akigen.ecotrekk_backend.entity.GearImage;
+import com.akigen.ecotrekk_backend.entity.Inventory;
 import com.akigen.ecotrekk_backend.repository.GearCategoryRepository;
+import com.akigen.ecotrekk_backend.repository.GearImageRepository;
 import com.akigen.ecotrekk_backend.repository.GearRepository;
-import com.akigen.ecotrekk_backend.repository.HubRepository;
-import com.akigen.ecotrekk_backend.repository.HubInventoryRepository;
+import com.akigen.ecotrekk_backend.repository.InventoryRepository;
 import com.akigen.ecotrekk_backend.service.GearService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -23,81 +25,194 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.springframework.http.HttpStatus.BAD_REQUEST;
 import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.NOT_FOUND;
 
-import java.util.List;
-
 @Service
 @RequiredArgsConstructor
 public class GearServiceImpl implements GearService {
 
-    private final HubInventoryRepository hubInventoryRepository;
+    private final InventoryRepository inventoryRepository;
     private final GearRepository gearRepository;
     private final GearCategoryRepository gearCategoryRepository;
-    private final HubRepository hubRepository;
+    private final GearImageRepository gearImageRepository;
 
     @Override
     @Transactional
     public GearAdminListItemDTO createAdminGear(GearCreateRequestDTO request) {
-    GearCategory category = gearCategoryRepository.findById(request.getCategoryId())
-        .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Category not found with ID: " + request.getCategoryId()));
+        try {
+            GearCategory category = gearCategoryRepository.findById(request.getCategoryId())
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Category not found with ID: " + request.getCategoryId()));
 
-    Hub hub = hubRepository.findById(request.getHubId())
-        .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Hub not found with ID: " + request.getHubId()));
+            int availableCount = request.getAvailableCount();
+            if (availableCount < 0) {
+                throw new ResponseStatusException(BAD_REQUEST, "Available count must be non-negative");
+            }
 
-    int availableCount = request.getAvailableCount();
-    if (availableCount < 0) {
-        throw new ResponseStatusException(BAD_REQUEST, "Available count must be non-negative");
+            Gear gear = Gear.builder()
+                    .category(category)
+                    .name(request.getName().trim())
+                    .description(request.getDescription())
+                    .dailyRentPrice(request.getDailyRentPrice())
+                    .depositAmount(request.getDepositAmount() == null ? BigDecimal.ZERO : request.getDepositAmount())
+                    .active(request.getActive() == null || request.getActive())
+                    .build();
+
+            Gear savedGear = gearRepository.save(gear);
+
+            Inventory inventory = Inventory.builder()
+                    .gear(savedGear)
+                    .totalQty(availableCount)
+                    .availableQty(availableCount)
+                    .build();
+
+            Inventory savedInventory = inventoryRepository.save(inventory);
+
+            return GearAdminListItemDTO.builder()
+                    .id(savedInventory.getId())
+                    .gearId(savedGear.getId())
+                    .name(savedGear.getName())
+                    .category(category.getName())
+                    .imageUrl(resolveGearImageUrl(savedGear))
+                    .description(savedGear.getDescription())
+                    .pricePerDay(savedGear.getDailyRentPrice())
+                    .depositAmount(savedGear.getDepositAmount())
+                    .totalQty(savedInventory.getTotalQty())
+                    .availableQty(savedInventory.getAvailableQty())
+                    .status(savedGear.isActive() ? "ACTIVE" : "INACTIVE")
+                    .updatedAt(savedGear.getUpdatedAt())
+                    .build();
+        } catch (DataIntegrityViolationException ex) {
+            throw new ResponseStatusException(BAD_REQUEST, "Invalid gear payload or database constraint violation", ex);
+        }
     }
 
-    Gear gear = Gear.builder()
-        .category(category)
-        .name(request.getName().trim())
-        .description(request.getDescription())
-        .dailyRentPrice(request.getDailyRentPrice())
-        .depositAmount(request.getDepositAmount() == null ? BigDecimal.ZERO : request.getDepositAmount())
-        .active(request.getActive() == null || request.getActive())
-        .build();
+    @Override
+    @Transactional
+    public GearAdminListItemDTO updateAdminGear(Long gearId, GearCreateRequestDTO request) {
+        try {
+            Gear gear = gearRepository.findById(gearId)
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Gear not found"));
 
-    Gear savedGear = gearRepository.save(gear);
+            GearCategory category = gearCategoryRepository.findById(request.getCategoryId())
+                    .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Category not found with ID: " + request.getCategoryId()));
 
-    HubInventory inventory = HubInventory.builder()
-        .hub(hub)
-        .gear(savedGear)
-        .totalQty(availableCount)
-        .availableQty(availableCount)
-        .build();
+            int availableCount = request.getAvailableCount();
+            if (availableCount < 0) {
+                throw new ResponseStatusException(BAD_REQUEST, "Available count must be non-negative");
+            }
 
-    HubInventory savedInventory = hubInventoryRepository.save(inventory);
+            gear.setCategory(category);
+            gear.setName(request.getName().trim());
+            gear.setDescription(request.getDescription());
+            gear.setDailyRentPrice(request.getDailyRentPrice());
+            gear.setDepositAmount(request.getDepositAmount() == null ? BigDecimal.ZERO : request.getDepositAmount());
+            gear.setActive(request.getActive() == null || request.getActive());
 
-    return GearAdminListItemDTO.builder()
-        .id(savedInventory.getId())
-        .gearId(savedGear.getId())
-        .name(savedGear.getName())
-        .category(category.getName())
-        .description(savedGear.getDescription())
-        .pricePerDay(savedGear.getDailyRentPrice())
-        .stock(savedInventory.getAvailableQty())
-        .status(savedGear.isActive() ? "ACTIVE" : "INACTIVE")
-        .hubId(hub.getId())
-        .hubName(hub.getName())
-        .updatedAt(savedGear.getUpdatedAt())
-        .build();
+            Gear updatedGear = gearRepository.save(gear);
+
+            Inventory inventory = inventoryRepository.findByGearId(gearId).stream()
+                    .findFirst()
+                    .orElseGet(() -> Inventory.builder().gear(updatedGear).build());
+
+            inventory.setTotalQty(availableCount);
+            inventory.setAvailableQty(availableCount);
+            Inventory updatedInventory = inventoryRepository.save(inventory);
+
+            return GearAdminListItemDTO.builder()
+                    .id(updatedInventory.getId())
+                    .gearId(updatedGear.getId())
+                    .name(updatedGear.getName())
+                    .category(category.getName())
+                    .imageUrl(resolveGearImageUrl(updatedGear))
+                    .description(updatedGear.getDescription())
+                    .pricePerDay(updatedGear.getDailyRentPrice())
+                    .depositAmount(updatedGear.getDepositAmount())
+                    .totalQty(updatedInventory.getTotalQty())
+                    .availableQty(updatedInventory.getAvailableQty())
+                    .status(updatedGear.isActive() ? "ACTIVE" : "INACTIVE")
+                    .updatedAt(updatedGear.getUpdatedAt())
+                    .build();
+        } catch (DataIntegrityViolationException ex) {
+            throw new ResponseStatusException(BAD_REQUEST, "Invalid gear payload or database constraint violation", ex);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void updateGearStatus(Long gearId, boolean active) {
+        Gear gear = gearRepository.findById(gearId)
+                .orElseThrow(() -> new ResponseStatusException(NOT_FOUND, "Gear not found"));
+
+        gear.setActive(active);
+        gearRepository.save(gear);
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<GearCategoryOptionDTO> getGearCategories() {
-    return gearCategoryRepository.findAll().stream()
-        .map(category -> GearCategoryOptionDTO.builder()
-            .id(category.getId())
-            .name(category.getName())
-            .imageUrl(category.getImageUrl())
-            .build())
-        .toList();
+        return gearCategoryRepository.findAll().stream()
+                .map(category -> GearCategoryOptionDTO.builder()
+                        .id(category.getId())
+                        .name(category.getName())
+                        .imageUrl(category.getImageUrl())
+                        .build())
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PublicFeaturedGearDTO> getPublicFeaturedGears(int limit) {
+        int cappedLimit = Math.max(1, Math.min(limit, 12));
+
+        return gearRepository.findByActiveTrue().stream()
+                .sorted((first, second) -> second.getUpdatedAt().compareTo(first.getUpdatedAt()))
+                .limit(cappedLimit)
+                .map(this::mapToPublicGearDto)
+                .toList();
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<PublicFeaturedGearDTO> getPublicGears() {
+        return gearRepository.findByActiveTrue().stream()
+                .sorted((first, second) -> second.getUpdatedAt().compareTo(first.getUpdatedAt()))
+                .map(this::mapToPublicGearDto)
+                .toList();
+    }
+
+    private PublicFeaturedGearDTO mapToPublicGearDto(Gear gear) {
+        int availableQty = inventoryRepository.findByGearId(gear.getId()).stream()
+                .mapToInt(inv -> inv.getAvailableQty())
+                .sum();
+
+        return PublicFeaturedGearDTO.builder()
+                .id(gear.getId())
+                .name(gear.getName())
+                .category(gear.getCategory().getName())
+                .description(gear.getDescription())
+                .pricePerDay(gear.getDailyRentPrice())
+                .depositAmount(gear.getDepositAmount())
+                .imageUrl(resolveGearImageUrl(gear))
+                .availableQty(availableQty)
+                .build();
+    }
+
+    private String resolveGearImageUrl(Gear gear) {
+        List<GearImage> primaryImages = gearImageRepository.findByGearIdAndPrimaryTrue(gear.getId());
+        if (!primaryImages.isEmpty()) {
+            return primaryImages.get(0).getImageUrl();
+        }
+
+        List<GearImage> orderedImages = gearImageRepository.findByGearIdOrderBySortOrderAsc(gear.getId());
+        if (!orderedImages.isEmpty()) {
+            return orderedImages.get(0).getImageUrl();
+        }
+
+        return gear.getCategory().getImageUrl();
     }
 
     @Override
@@ -118,7 +233,7 @@ public class GearServiceImpl implements GearService {
         return GearCategoryOptionDTO.builder()
                 .id(savedCategory.getId())
                 .name(savedCategory.getName())
-            .imageUrl(savedCategory.getImageUrl())
+                .imageUrl(savedCategory.getImageUrl())
                 .build();
     }
 
@@ -142,7 +257,7 @@ public class GearServiceImpl implements GearService {
         return GearCategoryOptionDTO.builder()
                 .id(updatedCategory.getId())
                 .name(updatedCategory.getName())
-            .imageUrl(updatedCategory.getImageUrl())
+                .imageUrl(updatedCategory.getImageUrl())
                 .build();
     }
 
@@ -166,17 +281,15 @@ public class GearServiceImpl implements GearService {
             String search,
             String category,
             String status,
-            String hub,
             String sort
     ) {
         Pageable pageable = buildPageable(page, size, sort);
 
-        Page<com.akigen.ecotrekk_backend.dto.response.GearAdminListItemDTO> result =
-                hubInventoryRepository.searchAdminGearInventory(
+        Page<GearAdminListItemDTO> result =
+                inventoryRepository.searchAdminInventory(
                         normalize(search),
                         normalize(category),
                         normalizeStatus(status),
-                        normalize(hub),
                         pageable
                 );
 

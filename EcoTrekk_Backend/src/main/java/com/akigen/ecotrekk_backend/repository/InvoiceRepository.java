@@ -2,6 +2,7 @@ package com.akigen.ecotrekk_backend.repository;
 
 import com.akigen.ecotrekk_backend.entity.Invoice;
 import com.akigen.ecotrekk_backend.enums.InvoiceStatus;
+import com.akigen.ecotrekk_backend.enums.PaymentMethod;
 import com.akigen.ecotrekk_backend.enums.PaymentStatus;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -24,6 +25,8 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     List<Invoice> findByPaymentStatus(PaymentStatus paymentStatus);
 
+    List<Invoice> findByPaymentMethod(PaymentMethod paymentMethod);
+
     List<Invoice> findByCustomerIdAndStatus(Long customerId, InvoiceStatus status);
 
     long countByStatus(InvoiceStatus status);
@@ -34,8 +37,27 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
 
     List<Invoice> findByHubIdInAndCreatedAtBetween(List<Long> hubIds, Instant startInclusive, Instant endExclusive);
 
-        @Query("""
+    @Query(
+            value = """
             SELECT i FROM Invoice i
+            JOIN FETCH i.customer c
+            JOIN FETCH i.hub h
+            WHERE (:status IS NULL OR i.status = :status)
+              AND (:search IS NULL
+                 OR LOWER(i.invoiceCode) LIKE LOWER(CONCAT('%', :search, '%'))
+                 OR LOWER(c.fullName) LIKE LOWER(CONCAT('%', :search, '%'))
+                 OR LOWER(c.email) LIKE LOWER(CONCAT('%', :search, '%')))
+              AND (:startDate IS NULL OR EXISTS (
+                  SELECT ii.id FROM InvoiceItem ii
+                  WHERE ii.invoice = i AND ii.endDate >= :startDate
+              ))
+              AND (:endDate IS NULL OR EXISTS (
+                  SELECT ii.id FROM InvoiceItem ii
+                  WHERE ii.invoice = i AND ii.startDate <= :endDate
+              ))
+            """,
+            countQuery = """
+            SELECT COUNT(i) FROM Invoice i
             JOIN i.customer c
             WHERE (:status IS NULL OR i.status = :status)
               AND (:search IS NULL
@@ -50,12 +72,13 @@ public interface InvoiceRepository extends JpaRepository<Invoice, Long> {
                   SELECT ii.id FROM InvoiceItem ii
                   WHERE ii.invoice = i AND ii.startDate <= :endDate
               ))
-            """)
-        Page<Invoice> searchAdminOrders(
+            """
+    )
+    Page<Invoice> searchAdminOrders(
             @Param("status") InvoiceStatus status,
             @Param("search") String search,
             @Param("startDate") LocalDate startDate,
             @Param("endDate") LocalDate endDate,
             Pageable pageable
-        );
+    );
 }

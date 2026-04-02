@@ -1,6 +1,7 @@
 package com.akigen.ecotrekk_backend.service;
 
 import com.akigen.ecotrekk_backend.dto.request.AdminOrderStatusUpdateRequestDTO;
+import com.akigen.ecotrekk_backend.dto.request.AdminOrderPaymentStatusUpdateRequestDTO;
 import com.akigen.ecotrekk_backend.dto.response.AdminOrderDTO;
 import com.akigen.ecotrekk_backend.dto.response.AdminOrderPageResponseDTO;
 
@@ -12,4 +13,6 @@ public interface AdminOrderService {
     AdminOrderDTO getOrderById(String id);
 
     void updateOrderStatus(String id, AdminOrderStatusUpdateRequestDTO request);
+
+    void updatePaymentStatus(String id, AdminOrderPaymentStatusUpdateRequestDTO request);
 }
