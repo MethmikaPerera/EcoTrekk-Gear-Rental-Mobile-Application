@@ -34,9 +34,13 @@ CREATE TABLE IF NOT EXISTS `carts` (
   `customer_id` bigint NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `start_date` date DEFAULT NULL,
+  `end_date` date DEFAULT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `customer_id` (`customer_id`),
-  CONSTRAINT `fk_carts_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`)
+  UNIQUE KEY `uk_carts_customer` (`customer_id`),
+  CONSTRAINT `fk_carts_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`),
+  CONSTRAINT `chk_cart_dates` CHECK ((`end_date` >= `start_date`))
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `cart_items` (
@@ -45,8 +49,6 @@ CREATE TABLE IF NOT EXISTS `cart_items` (
   `hub_id` bigint NOT NULL,
   `gear_id` bigint NOT NULL,
   `qty` int NOT NULL,
-  `start_date` date NOT NULL,
-  `end_date` date NOT NULL,
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
@@ -56,7 +58,6 @@ CREATE TABLE IF NOT EXISTS `cart_items` (
   CONSTRAINT `fk_cart_items_cart` FOREIGN KEY (`cart_id`) REFERENCES `carts` (`id`) ON DELETE CASCADE,
   CONSTRAINT `fk_cart_items_gear` FOREIGN KEY (`gear_id`) REFERENCES `gears` (`id`),
   CONSTRAINT `fk_cart_items_hub` FOREIGN KEY (`hub_id`) REFERENCES `hubs` (`id`),
-  CONSTRAINT `chk_cart_dates` CHECK ((`end_date` >= `start_date`)),
   CONSTRAINT `chk_cart_qty` CHECK ((`qty` > 0))
 ) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -65,7 +66,7 @@ CREATE TABLE IF NOT EXISTS `customers` (
   `firebase_uid` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL,
   `full_name` varchar(120) COLLATE utf8mb4_unicode_ci NOT NULL,
   `email` varchar(160) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `phone` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `phone` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `profile_picture_url` varchar(500) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -73,13 +74,32 @@ CREATE TABLE IF NOT EXISTS `customers` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `firebase_uid` (`firebase_uid`),
   UNIQUE KEY `email` (`email`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=5 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS `customer_device_tokens` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `created_at` datetime(6) NOT NULL,
+  `updated_at` datetime(6) NOT NULL,
+  `is_active` bit(1) NOT NULL,
+  `device_id` varchar(128) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `device_model` varchar(128) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `fcm_token` varchar(512) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `last_updated` datetime(6) NOT NULL,
+  `os_version` varchar(64) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
+  `customer_id` bigint NOT NULL,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_customer_device` (`customer_id`,`device_id`),
+  KEY `idx_customer_id` (`customer_id`),
+  KEY `idx_fcm_token` (`fcm_token`),
+  KEY `idx_device_id` (`device_id`),
+  CONSTRAINT `FKn02xvrayu5swvo6jl2r33lvsw` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gears` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `category_id` bigint NOT NULL,
   `name` varchar(140) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `description` tinytext COLLATE utf8mb4_unicode_ci,
+  `description` text CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci,
   `daily_rent_price` decimal(10,2) NOT NULL,
   `deposit_amount` decimal(10,2) NOT NULL DEFAULT '0.00',
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
@@ -90,7 +110,7 @@ CREATE TABLE IF NOT EXISTS `gears` (
   KEY `idx_gears_is_active` (`is_active`),
   CONSTRAINT `fk_gears_category` FOREIGN KEY (`category_id`) REFERENCES `gear_categories` (`id`),
   CONSTRAINT `chk_gears_prices` CHECK (((`daily_rent_price` >= 0) and (`deposit_amount` >= 0)))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gear_categories` (
   `id` bigint NOT NULL AUTO_INCREMENT,
@@ -100,7 +120,7 @@ CREATE TABLE IF NOT EXISTS `gear_categories` (
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   UNIQUE KEY `name` (`name`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=6 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `gear_images` (
   `id` bigint NOT NULL AUTO_INCREMENT,
@@ -112,39 +132,23 @@ CREATE TABLE IF NOT EXISTS `gear_images` (
   PRIMARY KEY (`id`),
   KEY `idx_gear_images_gear` (`gear_id`),
   CONSTRAINT `fk_gear_images_gear` FOREIGN KEY (`gear_id`) REFERENCES `gears` (`id`) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=19 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `hubs` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `name` varchar(120) COLLATE utf8mb4_unicode_ci NOT NULL,
   `address` varchar(160) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
-  `phone` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `phone` varchar(40) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `latitude` decimal(10,7) NOT NULL,
   `longitude` decimal(10,7) NOT NULL,
-  `map_location_url` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL,
-  `image_url` varchar(500) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `map_location_url` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
+  `image_url` varchar(500) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci NOT NULL,
   `is_active` tinyint(1) NOT NULL DEFAULT '1',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (`id`),
   KEY `idx_hubs_is_active` (`is_active`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS `hub_inventory` (
-  `id` bigint NOT NULL AUTO_INCREMENT,
-  `hub_id` bigint NOT NULL,
-  `gear_id` bigint NOT NULL,
-  `total_qty` int NOT NULL DEFAULT '0',
-  `available_qty` int NOT NULL DEFAULT '0',
-  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  PRIMARY KEY (`id`),
-  UNIQUE KEY `uq_inventory` (`hub_id`,`gear_id`),
-  KEY `idx_inventory_hub` (`hub_id`),
-  KEY `idx_inventory_gear` (`gear_id`),
-  CONSTRAINT `fk_inventory_gear` FOREIGN KEY (`gear_id`) REFERENCES `gears` (`id`),
-  CONSTRAINT `fk_inventory_hub` FOREIGN KEY (`hub_id`) REFERENCES `hubs` (`id`),
-  CONSTRAINT `chk_inventory_qty` CHECK (((`total_qty` >= 0) and (`available_qty` >= 0) and (`available_qty` <= `total_qty`)))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `hub_managers` (
   `id` bigint NOT NULL AUTO_INCREMENT,
@@ -160,11 +164,23 @@ CREATE TABLE IF NOT EXISTS `hub_managers` (
   CONSTRAINT `fk_hub_managers_hub` FOREIGN KEY (`hub_id`) REFERENCES `hubs` (`id`) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS `inventory` (
+  `id` bigint NOT NULL AUTO_INCREMENT,
+  `gear_id` bigint NOT NULL,
+  `total_qty` int NOT NULL DEFAULT '0',
+  `available_qty` int NOT NULL DEFAULT '0',
+  `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uq_inventory_gear` (`gear_id`),
+  CONSTRAINT `fk_inventory_gear` FOREIGN KEY (`gear_id`) REFERENCES `gears` (`id`),
+  CONSTRAINT `chk_inventory_qty` CHECK (((`total_qty` >= 0) and (`available_qty` >= 0) and (`available_qty` <= `total_qty`)))
+) ENGINE=InnoDB AUTO_INCREMENT=20 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS `invoices` (
   `id` bigint NOT NULL AUTO_INCREMENT,
   `invoice_code` varchar(40) COLLATE utf8mb4_unicode_ci NOT NULL,
   `customer_id` bigint NOT NULL,
-  `hub_id` bigint NOT NULL,
+  `collection_hub_id` bigint NOT NULL,
   `status` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
   `payment_status` varchar(30) COLLATE utf8mb4_unicode_ci NOT NULL,
   `subtotal` decimal(12,2) NOT NULL DEFAULT '0.00',
@@ -172,16 +188,18 @@ CREATE TABLE IF NOT EXISTS `invoices` (
   `total_amount` decimal(12,2) NOT NULL DEFAULT '0.00',
   `created_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP,
   `updated_at` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  `payment_method` varchar(20) COLLATE utf8mb4_unicode_ci NOT NULL,
+  `inventory_allocated` bit(1) NOT NULL,
   PRIMARY KEY (`id`),
   UNIQUE KEY `invoice_code` (`invoice_code`),
-  KEY `fk_invoices_hub` (`hub_id`),
   KEY `idx_invoices_customer` (`customer_id`),
   KEY `idx_invoices_status` (`status`),
   KEY `idx_invoices_payment_status` (`payment_status`),
+  KEY `fk_invoice_collection_hub` (`collection_hub_id`),
+  CONSTRAINT `fk_invoice_collection_hub` FOREIGN KEY (`collection_hub_id`) REFERENCES `hubs` (`id`),
   CONSTRAINT `fk_invoices_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`),
-  CONSTRAINT `fk_invoices_hub` FOREIGN KEY (`hub_id`) REFERENCES `hubs` (`id`),
   CONSTRAINT `chk_invoice_money` CHECK (((`subtotal` >= 0) and (`deposit_total` >= 0) and (`total_amount` >= 0)))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `invoice_items` (
   `id` bigint NOT NULL AUTO_INCREMENT,
@@ -203,7 +221,7 @@ CREATE TABLE IF NOT EXISTS `invoice_items` (
   CONSTRAINT `chk_invoice_item_money` CHECK (((`line_total` >= 0) and (`deposit_total` >= 0))),
   CONSTRAINT `chk_invoice_item_prices` CHECK (((`daily_rent_price` >= 0) and (`deposit_amount` >= 0))),
   CONSTRAINT `chk_invoice_item_qty` CHECK ((`qty` > 0))
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `notifications` (
   `id` bigint NOT NULL AUTO_INCREMENT,
@@ -222,7 +240,7 @@ CREATE TABLE IF NOT EXISTS `notifications` (
   KEY `idx_notifications_type` (`type`),
   CONSTRAINT `fk_notifications_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`),
   CONSTRAINT `fk_notifications_invoice` FOREIGN KEY (`invoice_id`) REFERENCES `invoices` (`id`)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB AUTO_INCREMENT=4 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `wishlists` (
   `id` bigint NOT NULL AUTO_INCREMENT,
@@ -231,7 +249,7 @@ CREATE TABLE IF NOT EXISTS `wishlists` (
   PRIMARY KEY (`id`),
   UNIQUE KEY `customer_id` (`customer_id`),
   CONSTRAINT `fk_wishlists_customer` FOREIGN KEY (`customer_id`) REFERENCES `customers` (`id`)
-) ENGINE=InnoDB AUTO_INCREMENT=2 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS `wishlist_items` (
   `id` bigint NOT NULL AUTO_INCREMENT,
