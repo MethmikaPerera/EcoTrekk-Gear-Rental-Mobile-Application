@@ -6,30 +6,40 @@ import android.text.Editable;
 import android.text.TextWatcher;
 import android.util.Log;
 import android.util.Patterns;
-import android.widget.Toast;
+import android.view.View;
 
-import androidx.activity.EdgeToEdge;
-import androidx.activity.OnBackPressedCallback;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
-import androidx.core.graphics.Insets;
-import androidx.core.view.ViewCompat;
-import androidx.core.view.WindowInsetsCompat;
 
 import com.akigen.ecotrekk.R;
 import com.akigen.ecotrekk.databinding.ActivityLoginBinding;
-import com.google.android.gms.tasks.OnCompleteListener;
-import com.google.android.gms.tasks.OnFailureListener;
-import com.google.android.gms.tasks.Task;
-import com.google.firebase.auth.AuthResult;
+import com.akigen.ecotrekk.api.ApiService;
+import com.akigen.ecotrekk.dto.CustomerAuthRequest;
+import com.akigen.ecotrekk.dto.CustomerAuthResponse;
+import com.akigen.ecotrekk.client.RetrofitClient;
+import com.akigen.ecotrekk.database.UserSessionManager;
+import com.akigen.ecotrekk.manager.FcmManager;
+import com.akigen.ecotrekk.manager.SessionManager;
+import com.google.android.material.textfield.TextInputLayout;
 import com.google.firebase.auth.FirebaseAuth;
 import com.google.firebase.auth.FirebaseUser;
-import com.google.android.material.textfield.TextInputLayout;
+
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
 
 public class LoginActivity extends AppCompatActivity {
 
+    private static final String TAG = "LoginActivity";
+
     private ActivityLoginBinding binding;
     private FirebaseAuth firebaseAuth;
+    private SessionManager sessionManager;
+    private UserSessionManager userSessionManager;  // SQLite session manager
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -39,100 +49,223 @@ public class LoginActivity extends AppCompatActivity {
         setContentView(binding.getRoot());
 
         firebaseAuth = FirebaseAuth.getInstance();
+        sessionManager = new SessionManager(this);
+        userSessionManager = UserSessionManager.getInstance(this);  // Initialize SQLite session manager
 
-        // Clear error + reclaim spacing as soon as the user starts correcting each
-        // field
         attachErrorResetWatcher(binding.loginActivityEmailInput);
         attachErrorResetWatcher(binding.loginActivityPasswordInput);
 
+        binding.closeErrorBanner.setOnClickListener(v -> hideError());
+
         binding.loginActivitySignupBtn.setOnClickListener(view -> {
-            Intent intent = new Intent(LoginActivity.this, SignupActivity.class);
-            startActivity(intent);
+            startActivity(new Intent(LoginActivity.this, SignupActivity.class));
             finish();
         });
 
-        binding.loginActivityBackButton.setOnClickListener(view -> {
-            finish();
-        });
+        binding.loginActivityBackButton.setOnClickListener(view -> finish());
 
         binding.loginActivityLoginBtn.setOnClickListener(view -> {
+            hideError();
             binding.loginActivityEmailInput.setError(null);
             binding.loginActivityPasswordInput.setError(null);
 
-            binding.loginActivitySignupBtn.setEnabled(false);
-            binding.loginActivityLoginBtn.setEnabled(false);
-            binding.loginActivityLoginBtn.setText("Logging in...");
-
-            String email = binding.loginActivityEmailInput.getEditText().getText().toString();
+            String email = binding.loginActivityEmailInput.getEditText().getText().toString().trim();
             String password = binding.loginActivityPasswordInput.getEditText().getText().toString();
 
-            if (validateInputs(email, password)) {
-                firebaseAuth.signInWithEmailAndPassword(email, password)
-                        .addOnCompleteListener(new OnCompleteListener<AuthResult>() {
-                            @Override
-                            public void onComplete(@NonNull Task<AuthResult> task) {
-                                if (task.isSuccessful()) {
-                                    FirebaseUser user = firebaseAuth.getCurrentUser();
-                                    updateUI(user);
-                                } else {
-                                    Toast.makeText(LoginActivity.this, "Authentication failed", Toast.LENGTH_SHORT).show();
-                                    Log.d("LoginActivity", "Authentication failed", task.getException());
-                                    updateUI(null);
-                                }
-                            }
-                        });
-            }
+            if (!validateInputs(email, password))
+                return;
 
+            setLoading(true);
+
+            firebaseAuth.signInWithEmailAndPassword(email, password)
+                    .addOnCompleteListener(task -> {
+                        if (task.isSuccessful()) {
+                            FirebaseUser user = firebaseAuth.getCurrentUser();
+                            if (user != null) {
+                                fetchBackendSession(user);
+                            } else {
+                                showError("Login failed. Please try again.");
+                            }
+                        } else {
+                            Log.e(TAG, "Firebase sign-in failed", task.getException());
+                            showError("Invalid email or password.");
+                        }
+                    });
         });
 
+        // Forgot Password logic
+        binding.loginActivityForgotPasswordBtn.setOnClickListener(view -> showForgotPasswordDialog());
+    }
+    // ── Forgot Password ──────────────────────────────────────────────────────
+    private void showForgotPasswordDialog() {
+        // Create a container with padding
+        int padding = (int) (24 * getResources().getDisplayMetrics().density);
+        LinearLayout container = new LinearLayout(this);
+        container.setOrientation(LinearLayout.VERTICAL);
+        container.setPadding(padding, padding, padding, 0);
+
+        // Description text
+        android.widget.TextView description = new android.widget.TextView(this);
+        description.setText("Enter your email address to receive a password reset link.");
+        description.setTextAppearance(com.google.android.material.R.style.TextAppearance_Material3_BodyMedium);
+        description.setPadding(0, 0, 0, (int) (12 * getResources().getDisplayMetrics().density));
+        container.addView(description);
+
+        // TextInputLayout for Material floating label and error
+        com.google.android.material.textfield.TextInputLayout textInputLayout = new com.google.android.material.textfield.TextInputLayout(this, null, com.google.android.material.R.style.Widget_Material3_TextInputLayout_OutlinedBox);
+        textInputLayout.setHint("Email");
+        textInputLayout.setBoxBackgroundMode(com.google.android.material.textfield.TextInputLayout.BOX_BACKGROUND_OUTLINE);
+        textInputLayout.setBoxCornerRadii(16, 16, 16, 16);
+
+        final EditText emailInput = new com.google.android.material.textfield.TextInputEditText(this);
+        emailInput.setInputType(android.text.InputType.TYPE_TEXT_VARIATION_EMAIL_ADDRESS);
+        emailInput.setSingleLine(true);
+        textInputLayout.addView(emailInput);
+        container.addView(textInputLayout);
+
+        MaterialAlertDialogBuilder builder = new MaterialAlertDialogBuilder(this)
+                .setTitle("Reset Password")
+                .setView(container)
+                .setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss())
+                .setPositiveButton("Send", null); // We'll override this below
+
+        final androidx.appcompat.app.AlertDialog dialog = builder.create();
+        dialog.setOnShowListener(dlg -> {
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener(v -> {
+                String email = emailInput.getText().toString().trim();
+                if (email.isEmpty()) {
+                    textInputLayout.setError("Email is required");
+                } else if (!Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+                    textInputLayout.setError("Enter a valid email address");
+                } else {
+                    textInputLayout.setError(null);
+                    sendPasswordResetEmail(email);
+                    dialog.dismiss();
+                }
+            });
+        });
+        dialog.show();
     }
 
-    private void updateUI(FirebaseUser user) {
-        if (user != null) {
-            Intent intent = new Intent(LoginActivity.this, HomeActivity.class);
-            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
-            startActivity(intent);
-            finish();
-        } else {
-            enableButtons();
-        }
+    private void sendPasswordResetEmail(String email) {
+        setLoading(true);
+        firebaseAuth.sendPasswordResetEmail(email)
+                .addOnCompleteListener(task -> {
+                    setLoading(false);
+                    if (task.isSuccessful()) {
+                        showError("Password reset email sent. Check your inbox.");
+                    } else {
+                        showError("Failed to send reset email. Try again.");
+                    }
+                });
     }
 
-    private void enableButtons() {
-        binding.loginActivitySignupBtn.setEnabled(true);
-        binding.loginActivityLoginBtn.setEnabled(true);
-        binding.loginActivityLoginBtn.setText("Log In");
+    // ── Step 2: get Firebase ID token and call the backend ────────────────────
+
+    private void fetchBackendSession(FirebaseUser firebaseUser) {
+        firebaseUser.getIdToken(true)
+                .addOnSuccessListener(result -> {
+                    String idToken = result.getToken();
+                    if (idToken == null) {
+                        showError("Authentication error. Please try again.");
+                        return;
+                    }
+                    callBackendLogin(idToken);
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "Failed to get Firebase ID token", e);
+                    showError("Authentication error. Please try again.");
+                });
+    }
+
+    private void callBackendLogin(String idToken) {
+        ApiService api = RetrofitClient.getInstance().getApiService();
+        api.customerFirebaseLogin(new CustomerAuthRequest(idToken))
+                .enqueue(new Callback<CustomerAuthResponse>() {
+                    @Override
+                    public void onResponse(@NonNull Call<CustomerAuthResponse> call,
+                            @NonNull Response<CustomerAuthResponse> response) {
+                        if (response.isSuccessful() && response.body() != null) {
+                            sessionManager.saveSession(response.body());
+                            
+                            // Also save to SQLite database
+                            CustomerAuthResponse authResponse = response.body();
+                            userSessionManager.loginUser(
+                                String.valueOf(authResponse.getCustomerId()),
+                                authResponse.getEmail(),
+                                authResponse.getFullName(),
+                                authResponse.getPhone() != null ? authResponse.getPhone() : "",
+                                idToken  // Store Firebase ID token
+                            );
+
+                            // Non-blocking token registration. Login should continue even if this fails.
+                            FcmManager.syncTokenToBackend(LoginActivity.this);
+                            
+                            navigateToHome();
+                        } else {
+                            Log.e(TAG, "Backend login failed: " + response.code());
+                            showError("Login failed. Please try again later.");
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(@NonNull Call<CustomerAuthResponse> call, @NonNull Throwable t) {
+                        Log.e(TAG, "Network error during backend login", t);
+                        showError("Network error. Check your connection.");
+                    }
+                });
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private void navigateToHome() {
+        Intent intent = new Intent(LoginActivity.this, HomeActivity.class);
+        intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+        startActivity(intent);
+        finish();
+    }
+
+    private void showError(String message) {
+        runOnUiThread(() -> {
+            binding.errorBannerText.setText(message);
+            binding.errorBanner.setVisibility(View.VISIBLE);
+            setLoading(false);
+        });
+    }
+
+    private void hideError() {
+        binding.errorBanner.setVisibility(View.GONE);
+    }
+
+    private void setLoading(boolean loading) {
+        binding.loginActivityLoginBtn.setEnabled(!loading);
+        binding.loginActivitySignupBtn.setEnabled(!loading);
+        binding.loginActivityLoginBtn.setText(loading ? R.string.logging_in : R.string.log_in);
     }
 
     private boolean validateInputs(String email, String password) {
-        boolean isValid = true;
-
+        boolean valid = true;
         if (email.isEmpty()) {
             binding.loginActivityEmailInput.setError("Email is required");
             binding.loginActivityEmailInput.requestFocus();
-            isValid = false;
-        }
-        if (!Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            valid = false;
+        } else if (!Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
             binding.loginActivityEmailInput.setError("Enter a valid email address");
             binding.loginActivityEmailInput.requestFocus();
-            isValid = false;
+            valid = false;
         }
         if (password.isEmpty()) {
             binding.loginActivityPasswordInput.setError("Password is required");
             binding.loginActivityPasswordInput.requestFocus();
-            isValid = false;
-        }
-        if (password.length() < 6) {
+            valid = false;
+        } else if (password.length() < 6) {
             binding.loginActivityPasswordInput.setError("Password must be at least 6 characters");
             binding.loginActivityPasswordInput.requestFocus();
-            isValid = false;
+            valid = false;
         }
-
-        return isValid;
+        return valid;
     }
 
-    // Attaches a TextWatcher that clears the error AND collapses the error space
-    // when the user types.
     private void attachErrorResetWatcher(TextInputLayout inputLayout) {
         if (inputLayout.getEditText() == null)
             return;
@@ -147,6 +280,7 @@ public class LoginActivity extends AppCompatActivity {
                     inputLayout.setError(null);
                     inputLayout.setErrorEnabled(false);
                 }
+                hideError();
             }
 
             @Override

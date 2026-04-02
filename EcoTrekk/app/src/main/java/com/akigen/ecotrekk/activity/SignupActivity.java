@@ -1,30 +1,51 @@
 package com.akigen.ecotrekk.activity;
 
-import android.app.Activity;
 import android.content.Intent;
 import android.os.Bundle;
 import android.text.Editable;
 import android.text.TextWatcher;
+import android.util.Log;
 import android.util.Patterns;
+import android.view.View;
 
-import androidx.activity.OnBackPressedCallback;
-import androidx.activity.OnBackPressedDispatcher;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 
+import com.akigen.ecotrekk.R;
 import com.akigen.ecotrekk.databinding.ActivitySignupBinding;
-import com.akigen.ecotrekk.model.User;
-import com.google.android.gms.tasks.OnFailureListener;
-import com.google.android.gms.tasks.OnSuccessListener;
-import com.google.firebase.auth.FirebaseAuth;
-import com.google.firebase.firestore.FirebaseFirestore;
+import com.akigen.ecotrekk.dto.CustomerAuthResponse;
+import com.akigen.ecotrekk.dto.CustomerRegisterRequest;
+import com.akigen.ecotrekk.dto.CustomerRegisterResponse;
+import com.akigen.ecotrekk.client.RetrofitClient;
+import com.akigen.ecotrekk.manager.SessionManager;
 import com.google.android.material.textfield.TextInputLayout;
+import com.google.firebase.auth.FirebaseAuth;
 
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+
+/**
+ * Customer registration — driven entirely by the Spring Boot backend.
+ *
+ * Flow:
+ * 1. User fills in name / email / phone / password.
+ * 2. POST /api/auth/customer/register → backend creates Firebase Auth user +
+ * MySQL record.
+ * 3. Backend returns a Firebase custom token + customer profile.
+ * 4. App calls FirebaseAuth.signInWithCustomToken() to establish a local
+ * Firebase session.
+ * 5. Save customer profile to SessionManager → navigate to HomeActivity.
+ *
+ * No Firebase client-side createUser. No Firestore.
+ */
 public class SignupActivity extends AppCompatActivity {
+
+    private static final String TAG = "SignupActivity";
 
     private ActivitySignupBinding binding;
     private FirebaseAuth firebaseAuth;
-    private FirebaseFirestore firebaseFirestore;
+    private SessionManager sessionManager;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -33,92 +54,143 @@ public class SignupActivity extends AppCompatActivity {
         setContentView(binding.getRoot());
 
         firebaseAuth = FirebaseAuth.getInstance();
-        firebaseFirestore = FirebaseFirestore.getInstance();
+        sessionManager = new SessionManager(this);
 
-        // Clear error + reclaim spacing as soon as the user starts correcting each field
         attachErrorResetWatcher(binding.signupActivityNameInput);
         attachErrorResetWatcher(binding.signupActivityEmailInput);
         attachErrorResetWatcher(binding.signupActivityPhoneInput);
         attachErrorResetWatcher(binding.signupActivityPasswordInput);
         attachErrorResetWatcher(binding.signupActivityConfirmPasswordInput);
 
+        binding.closeErrorBanner.setOnClickListener(v -> hideError());
+
         binding.signupActivityLoginBtn.setOnClickListener(view -> {
-            Intent intent = new Intent(SignupActivity.this, LoginActivity.class);
-            startActivity(intent);
+            startActivity(new Intent(SignupActivity.this, LoginActivity.class));
             finish();
         });
 
-        binding.signupActivityBackButton.setOnClickListener(view -> {
-            finish();
-        });
+        binding.signupActivityBackButton.setOnClickListener(view -> finish());
 
         binding.signupActivitySignupBtn.setOnClickListener(view -> {
-            binding.signupActivityNameInput.setError(null);
-            binding.signupActivityEmailInput.setError(null);
-            binding.signupActivityPhoneInput.setError(null);
-            binding.signupActivityPasswordInput.setError(null);
-            binding.signupActivityConfirmPasswordInput.setError(null);
-            binding.signupActivityTermsCheckbox.setError(null);
+            hideError();
+            clearErrors();
 
-            binding.signupActivityLoginBtn.setEnabled(false);
-            binding.signupActivitySignupBtn.setEnabled(false);
-            binding.signupActivitySignupBtn.setText("Creating account...");
-
-            String name = binding.signupActivityNameInput.getEditText().getText().toString();
-            String phoneNumber = binding.signupActivityPhoneInput.getEditText().getText().toString();
-            String email = binding.signupActivityEmailInput.getEditText().getText().toString();
+            String name = binding.signupActivityNameInput.getEditText().getText().toString().trim();
+            String phoneNumber = binding.signupActivityPhoneInput.getEditText().getText().toString().trim();
+            String email = binding.signupActivityEmailInput.getEditText().getText().toString().trim();
             String password = binding.signupActivityPasswordInput.getEditText().getText().toString();
             String confirmPassword = binding.signupActivityConfirmPasswordInput.getEditText().getText().toString();
 
-            String profilePicture = "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?q=80&w=880&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D";
+            if (!validateInputs(name, phoneNumber, email, password, confirmPassword))
+                return;
 
-            if (validateInputs(name, phoneNumber, email, password, confirmPassword)) {
-                firebaseAuth.createUserWithEmailAndPassword(email, password)
-                        .addOnCompleteListener(task -> {
-                            if (task.isSuccessful()) {
-                                String uid = task.getResult().getUser().getUid();
-                                User user = User.builder()
-                                        .uid(uid)
-                                        .uname(name)
-                                        .email(email)
-                                        .phone(phoneNumber)
-                                        .profilePicture(profilePicture)
-                                        .build();
+            setLoading(true);
 
-                                firebaseFirestore.collection("users")
-                                        .document(uid)
-                                        .set(user).addOnSuccessListener(new OnSuccessListener<Void>() {
-                                            @Override
-                                            public void onSuccess(Void unused) {
-                                                Intent intent = new Intent(SignupActivity.this, LoginActivity.class);
-                                                startActivity(intent);
-                                                finish();
-                                            }
-                                        }).addOnFailureListener(new OnFailureListener() {
-                                            @Override
-                                            public void onFailure(@NonNull Exception e) {
-                                                enableButtons();
-                                                binding.signupActivitySignupBtn.setError("Failed to register");
-                                                binding.signupActivitySignupBtn.requestFocus();
-                                            }
-                                        });
-
-                            } else {
-                                binding.signupActivitySignupBtn.setError("Failed to register");
-                                binding.signupActivitySignupBtn.requestFocus();
-                            }
-                        });
-            }
+            // Step 1: call the backend to create the account
+            callBackendRegister(name, email, password, phoneNumber);
         });
     }
 
-    private void enableButtons() {
-        binding.signupActivityLoginBtn.setEnabled(true);
-        binding.signupActivitySignupBtn.setEnabled(true);
-        binding.signupActivitySignupBtn.setText("Sign Up");
+    // ── Backend registration ──────────────────────────────────────────────────
+
+    private void callBackendRegister(String name, String email, String password, String phone) {
+        CustomerRegisterRequest req = new CustomerRegisterRequest(name, email, password, phone);
+        RetrofitClient.getInstance().getApiService()
+                .customerRegister(req)
+                .enqueue(new Callback<CustomerRegisterResponse>() {
+                    @Override
+                    public void onResponse(@NonNull Call<CustomerRegisterResponse> call,
+                            @NonNull Response<CustomerRegisterResponse> response) {
+                        if (response.isSuccessful() && response.body() != null) {
+                            signInWithCustomToken(response.body());
+                        } else {
+                            int code = response.code();
+                            String msg = code == 409
+                                    ? "An account with this email already exists."
+                                    : "Registration failed. Please try again.";
+                            Log.e(TAG, "Backend register failed: " + code);
+                            showError(msg);
+                        }
+                    }
+
+                    @Override
+                    public void onFailure(@NonNull Call<CustomerRegisterResponse> call, @NonNull Throwable t) {
+                        Log.e(TAG, "Network error during registration", t);
+                        showError("Network error. Check your connection.");
+                    }
+                });
     }
 
-    //Attaches a TextWatcher that clears the error AND collapses the error space when the user types.
+    // Step 2: sign in with the Firebase custom token returned by the backend
+    private void signInWithCustomToken(CustomerRegisterResponse registerResponse) {
+        firebaseAuth.signInWithCustomToken(registerResponse.getCustomToken())
+                .addOnSuccessListener(authResult -> {
+                    // Step 3: save customer profile to SessionManager
+                    CustomerAuthResponse profile = new CustomerAuthResponse(
+                            registerResponse.getCustomerId(),
+                            registerResponse.getFirebaseUid(),
+                            registerResponse.getFullName(),
+                            registerResponse.getEmail(),
+                            registerResponse.getPhone(),
+                            registerResponse.getProfilePictureUrl());
+                    sessionManager.saveSession(profile);
+                    navigateToHome();
+                })
+                .addOnFailureListener(e -> {
+                    Log.e(TAG, "signInWithCustomToken failed", e);
+                    // Account was created — ask user to log in
+                    showError("Account created! Please log in.");
+                    navigateToLogin();
+                });
+    }
+
+    // ── Navigation ────────────────────────────────────────────────────────────
+
+    private void navigateToHome() {
+        runOnUiThread(() -> {
+            Intent intent = new Intent(SignupActivity.this, HomeActivity.class);
+            intent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TASK);
+            startActivity(intent);
+            finish();
+        });
+    }
+
+    private void navigateToLogin() {
+        runOnUiThread(() -> {
+            startActivity(new Intent(SignupActivity.this, LoginActivity.class));
+            finish();
+        });
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
+
+    private void showError(String message) {
+        runOnUiThread(() -> {
+            binding.errorBannerText.setText(message);
+            binding.errorBanner.setVisibility(View.VISIBLE);
+            setLoading(false);
+        });
+    }
+
+    private void hideError() {
+        binding.errorBanner.setVisibility(View.GONE);
+    }
+
+    private void setLoading(boolean loading) {
+        binding.signupActivitySignupBtn.setEnabled(!loading);
+        binding.signupActivityLoginBtn.setEnabled(!loading);
+        binding.signupActivitySignupBtn.setText(loading ? R.string.creating_account : R.string.signup_btn_txt);
+    }
+
+    private void clearErrors() {
+        binding.signupActivityNameInput.setError(null);
+        binding.signupActivityEmailInput.setError(null);
+        binding.signupActivityPhoneInput.setError(null);
+        binding.signupActivityPasswordInput.setError(null);
+        binding.signupActivityConfirmPasswordInput.setError(null);
+        binding.signupActivityTermsCheckbox.setError(null);
+    }
+
     private void attachErrorResetWatcher(TextInputLayout inputLayout) {
         if (inputLayout.getEditText() == null)
             return;
@@ -133,6 +205,7 @@ public class SignupActivity extends AppCompatActivity {
                     inputLayout.setError(null);
                     inputLayout.setErrorEnabled(false);
                 }
+                hideError();
             }
 
             @Override
@@ -141,69 +214,55 @@ public class SignupActivity extends AppCompatActivity {
         });
     }
 
-    private boolean validateInputs(String name, String phoneNumber, String email, String password, String confirmPassword) {
-        boolean isValid = true;
-
+    private boolean validateInputs(String name, String phone, String email,
+            String password, String confirmPassword) {
+        boolean valid = true;
         if (name.isEmpty()) {
             binding.signupActivityNameInput.setError("Name is required");
             binding.signupActivityNameInput.requestFocus();
-            enableButtons();
-            isValid = false;
+            valid = false;
         }
-        if (phoneNumber.isEmpty()) {
+        if (phone.isEmpty()) {
             binding.signupActivityPhoneInput.setError("Phone number is required");
             binding.signupActivityPhoneInput.requestFocus();
-            enableButtons();
-            isValid = false;
-        }
-        if (phoneNumber.length() < 10) {
+            valid = false;
+        } else if (phone.length() < 10) {
             binding.signupActivityPhoneInput.setError("Phone number must be at least 10 digits");
             binding.signupActivityPhoneInput.requestFocus();
-            enableButtons();
-            isValid = false;
+            valid = false;
         }
         if (email.isEmpty()) {
             binding.signupActivityEmailInput.setError("Email is required");
             binding.signupActivityEmailInput.requestFocus();
-            enableButtons();
-            isValid = false;
-        }
-        if (!Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
+            valid = false;
+        } else if (!Patterns.EMAIL_ADDRESS.matcher(email).matches()) {
             binding.signupActivityEmailInput.setError("Enter a valid email address");
             binding.signupActivityEmailInput.requestFocus();
-            enableButtons();
-            isValid = false;
+            valid = false;
         }
         if (password.isEmpty()) {
             binding.signupActivityPasswordInput.setError("Password is required");
             binding.signupActivityPasswordInput.requestFocus();
-            enableButtons();
-            isValid = false;
-        }
-        if (password.length() < 6) {
+            valid = false;
+        } else if (password.length() < 6) {
             binding.signupActivityPasswordInput.setError("Password must be at least 6 characters");
             binding.signupActivityPasswordInput.requestFocus();
-            enableButtons();
-            isValid = false;
+            valid = false;
         }
         if (confirmPassword.isEmpty()) {
-            binding.signupActivityConfirmPasswordInput.setError("Confirm password is required");
+            binding.signupActivityConfirmPasswordInput.setError("Please confirm your password");
             binding.signupActivityConfirmPasswordInput.requestFocus();
-            enableButtons();
-            isValid = false;
-        }
-        if (!password.equals(confirmPassword)) {
+            valid = false;
+        } else if (!password.equals(confirmPassword)) {
             binding.signupActivityConfirmPasswordInput.setError("Passwords do not match");
             binding.signupActivityConfirmPasswordInput.requestFocus();
-            enableButtons();
-            isValid = false;
+            valid = false;
         }
         if (!binding.signupActivityTermsCheckbox.isChecked()) {
             binding.signupActivityTermsCheckbox.setError("You must agree to the terms and conditions");
             binding.signupActivityTermsCheckbox.requestFocus();
-            enableButtons();
-            isValid = false;
+            valid = false;
         }
-        return isValid;
+        return valid;
     }
 }

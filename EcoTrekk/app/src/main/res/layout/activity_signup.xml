@@ -43,15 +43,56 @@
                 android:layout_height="wrap_content"
                 android:layout_gravity="center"
                 android:layout_marginTop="5dp"
+                android:layout_marginBottom="10dp"
                 android:text="@string/signup_activity_subheader_txt"
                 android:textColor="@color/md_theme_onSurface"
-                android:textSize="12sp" />
+                android:textSize="13sp" />
+
+            <com.google.android.material.card.MaterialCardView
+                android:id="@+id/errorBanner"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:visibility="gone"
+                app:cardBackgroundColor="@color/md_theme_errorContainer"
+                app:cardCornerRadius="8dp"
+                app:cardElevation="0dp"
+                app:strokeColor="@color/md_theme_error"
+                app:strokeWidth="1dp">
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal"
+                    android:padding="12dp">
+
+                    <TextView
+                        android:id="@+id/errorBannerText"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:textColor="@color/md_theme_onErrorContainer"
+                        android:textSize="14sp"
+                        tools:text="Error message goes here" />
+
+                    <ImageView
+                        android:id="@+id/closeErrorBanner"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="0"
+                        android:clickable="true"
+                        android:contentDescription="@string/close_error_banner_content_description"
+                        app:srcCompat="@drawable/outline_close_24"
+                        app:tint="@color/md_theme_onErrorContainer" />
+                </LinearLayout>
+            </com.google.android.material.card.MaterialCardView>
 
             <com.google.android.material.textfield.TextInputLayout
                 android:id="@+id/signupActivityNameInput"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="30dp"
+                android:layout_marginTop="20dp"
                 android:hint="@string/name_input_hint_txt">
 
                 <com.google.android.material.textfield.TextInputEditText
