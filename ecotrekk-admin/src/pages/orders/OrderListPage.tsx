@@ -45,10 +45,33 @@ const statusIconMap: Record<string, React.ReactNode> = {
     CANCELLED: <CancelOutlinedIcon fontSize="small" />,
 };
 
+const MS_PER_DAY = 86_400_000;
+
+const toUtcDateOnly = (value: string): number => {
+    const [year, month, day] = value.split('T')[0].split('-').map(Number);
+    if (!year || !month || !day) {
+        return NaN;
+    }
+    return Date.UTC(year, month - 1, day);
+};
+
 const getDayCount = (start: string, end: string) => {
-    const startDate = new Date(start).getTime();
-    const endDate = new Date(end).getTime();
-    return Math.max(1, Math.ceil((endDate - startDate) / 86400000));
+    const startDate = toUtcDateOnly(start);
+    const endDate = toUtcDateOnly(end);
+    if (Number.isNaN(startDate) || Number.isNaN(endDate)) {
+        return 1;
+    }
+    return Math.max(1, Math.floor((endDate - startDate) / MS_PER_DAY) + 1);
+};
+
+const formatPaymentMethod = (method: string) => {
+    if (method === 'PAY_AT_HUB') {
+        return 'Pay at Hub';
+    }
+    if (method === 'CARD') {
+        return 'Card';
+    }
+    return method;
 };
 
 const OrderListPage = () => {
@@ -233,6 +256,7 @@ const OrderListPage = () => {
                             <TableCell>Order ID</TableCell>
                             <TableCell>Customer</TableCell>
                             <TableCell>Hub</TableCell>
+                            <TableCell>Payment</TableCell>
                             <TableCell>Schedule</TableCell>
                             <TableCell>Status</TableCell>
                             <TableCell align="right">Amount</TableCell>
@@ -242,13 +266,13 @@ const OrderListPage = () => {
                     <TableBody>
                         {isLoading ? (
                             <TableRow>
-                                <TableCell colSpan={7} align="center" sx={{ py: 8 }}>
+                                <TableCell colSpan={8} align="center" sx={{ py: 8 }}>
                                     <CircularProgress />
                                 </TableCell>
                             </TableRow>
                         ) : orders.length === 0 ? (
                             <TableRow>
-                                <TableCell colSpan={7}>
+                                <TableCell colSpan={8}>
                                     <EmptyState
                                         icon={<ReceiptLongIcon sx={{ fontSize: 36, color: 'grey.400' }} />}
                                         title={hasFilters ? 'No orders match your filters' : 'No orders found'}
@@ -269,6 +293,9 @@ const OrderListPage = () => {
                                     </TableCell>
                                     <TableCell>
                                         <Typography variant="body2" fontWeight={500}>{order.hubName}</Typography>
+                                    </TableCell>
+                                    <TableCell>
+                                        <Chip label={formatPaymentMethod(order.paymentMethod)} size="small" variant="outlined" />
                                     </TableCell>
                                     <TableCell>
                                         <Typography variant="body2">{order.startDate} to {order.endDate}</Typography>

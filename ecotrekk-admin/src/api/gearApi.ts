@@ -2,11 +2,13 @@ import axiosInstance from './axiosInstance';
 
 export interface Gear {
     id: string;
+    gearId?: string;
     name: string;
     category: string;
     description: string;
     pricePerDay: number;
-    stock: number;
+    totalQty: number;
+    availableQty: number;
     status: 'ACTIVE' | 'INACTIVE';
     imageUrl?: string;
     videoUrl?: string;
@@ -46,10 +48,12 @@ export interface CreateGearRequest {
     description?: string;
     dailyRentPrice: number;
     depositAmount: number;
-    hubId: number;
+    hubId?: number;
     availableCount: number;
     active: boolean;
 }
+
+export interface UpdateGearRequest extends CreateGearRequest {}
 
 export const getGears = (params: GearListParams) =>
     axiosInstance.get<PageResponse<Gear>>('/api/admin/gears', {
@@ -73,7 +77,10 @@ export const deleteGearCategory = (categoryId: number) =>
     axiosInstance.delete(`/api/admin/gears/categories/${categoryId}`);
 
 export const createAdminGear = (payload: CreateGearRequest) =>
-    axiosInstance.post('/api/admin/gears', payload);
+    axiosInstance.post<Gear>('/api/admin/gears', payload);
+
+export const updateAdminGear = (id: string, payload: UpdateGearRequest) =>
+    axiosInstance.put<Gear>(`/api/admin/gears/${id}`, payload);
 
 export const createGear = (data: Omit<Gear, 'id' | 'updatedAt'>) =>
     axiosInstance.post<Gear>('/api/admin/gears', data);

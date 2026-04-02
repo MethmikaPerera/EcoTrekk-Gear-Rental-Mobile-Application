@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import {
+    Alert,
     Dialog,
     DialogTitle,
     DialogContent,
@@ -21,7 +22,6 @@ export interface GearFormData {
     name: string;
     categoryId: string;
     description: string;
-    hub: string;
     availableCount: string;
     dailyRentPrice: string;
     depositAmount: string;
@@ -36,7 +36,6 @@ interface GearFormModalProps {
     onClose: () => void;
     onSubmit: (formData: GearFormData) => Promise<void>;
     categories: Array<{ id: string; name: string }>;
-    hubs: Array<{ id: string; name: string }>;
     initialData?: Partial<GearFormData>;
     loading?: boolean;
 }
@@ -45,7 +44,6 @@ const emptyForm: GearFormData = {
     name: '',
     categoryId: '',
     description: '',
-    hub: '',
     availableCount: '0',
     dailyRentPrice: '',
     depositAmount: '0',
@@ -60,7 +58,6 @@ const GearFormModal = ({
     onClose,
     onSubmit,
     categories,
-    hubs,
     initialData,
     loading = false,
 }: GearFormModalProps) => {
@@ -69,6 +66,7 @@ const GearFormModal = ({
         ...(mode === 'edit' && initialData ? initialData : {}),
     });
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [submitError, setSubmitError] = useState<string | null>(null);
     const [selectedImageName, setSelectedImageName] = useState('');
     const [previewImageUrl, setPreviewImageUrl] = useState(
         mode === 'edit' && initialData?.primaryImageUrl ? initialData.primaryImageUrl : ''
@@ -79,7 +77,6 @@ const GearFormModal = ({
             return {
                 title: 'Edit Gear',
                 submit: loading ? 'Saving...' : 'Save Changes',
-                info: 'Update core gear details. Manage hub inventory quantities separately.',
             };
         }
 
@@ -102,8 +99,8 @@ const GearFormModal = ({
             newErrors.categoryId = 'Category is required';
         }
 
-        if (!formData.hub) {
-            newErrors.hub = 'Hub is required';
+        if (!formData.description) {
+            newErrors.description = 'Description is required';
         }
 
         if (formData.availableCount === '') {
@@ -148,7 +145,13 @@ const GearFormModal = ({
             return;
         }
 
-        await onSubmit(formData);
+        setSubmitError(null);
+        try {
+            await onSubmit(formData);
+        } catch (error) {
+            const message = error instanceof Error ? error.message : 'Failed to save gear. Please try again.';
+            setSubmitError(message);
+        }
     };
 
     const handleImageFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -183,6 +186,7 @@ const GearFormModal = ({
 
     const handleClose = () => {
         setErrors({});
+        setSubmitError(null);
         setFormData(emptyForm);
         setPreviewImageUrl('');
         setSelectedImageName('');
@@ -213,6 +217,7 @@ const GearFormModal = ({
                         helperText={errors.name}
                         inputProps={{ maxLength: 140 }}
                         disabled={loading}
+                        sx={{ mt: 1 }}
                     />
 
                     <TextField
@@ -223,10 +228,16 @@ const GearFormModal = ({
                         rows={3}
                         value={formData.description}
                         onChange={handleChange('description')}
+                        error={!!errors.description}
+                        helperText={errors.description}
                         disabled={loading}
                     />
 
-                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', sm: '1fr 1fr' }, gap: 1.5 }}>
+                    {submitError && (
+                        <Alert severity="error">{submitError}</Alert>
+                    )}
+
+                    <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr' }, gap: 1.5 }}>
                         <TextField
                             select
                             label="Category"
@@ -241,24 +252,6 @@ const GearFormModal = ({
                             {categories.map((cat) => (
                                 <MenuItem key={cat.id} value={cat.id}>
                                     {cat.name}
-                                </MenuItem>
-                            ))}
-                        </TextField>
-
-                        <TextField
-                            select
-                            label="Hub"
-                            value={formData.hub}
-                            onChange={handleChange('hub')}
-                            error={!!errors.hub}
-                            helperText={errors.hub}
-                            fullWidth
-                            disabled={loading}
-                        >
-                            <MenuItem value="">Select a hub</MenuItem>
-                            {hubs.map((hub) => (
-                                <MenuItem key={hub.id} value={hub.id}>
-                                    {hub.name}
                                 </MenuItem>
                             ))}
                         </TextField>

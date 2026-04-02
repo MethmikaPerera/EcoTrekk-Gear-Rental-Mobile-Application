@@ -21,6 +21,7 @@ import {
     Alert,
     Chip,
     CircularProgress,
+    Tooltip,
 } from '@mui/material';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
@@ -35,7 +36,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import PageHeader from '../../components/PageHeader';
 import StatusBadge from '../../components/StatusBadge';
 import ConfirmDialog from '../../components/ConfirmDialog';
-import { getOrderById, Order, OrderStatus, patchOrderStatus } from '../../api/orderApi';
+import { getOrderById, Order, OrderStatus, patchOrderPaymentStatus, patchOrderStatus } from '../../api/orderApi';
 
 const statusSteps: OrderStatus[] = ['PENDING', 'CONFIRMED', 'PICKED_UP', 'RETURNED'];
 
@@ -45,6 +46,11 @@ type ActionConfig = {
     nextStatus: OrderStatus;
     icon: React.ReactNode;
     successMsg: string;
+};
+
+type UiActionConfig = ActionConfig & {
+    disabled: boolean;
+    disabledReason?: string;
 };
 
 const actionConfig: Record<OrderStatus, ActionConfig[]> = {
@@ -61,6 +67,25 @@ const actionConfig: Record<OrderStatus, ActionConfig[]> = {
     ],
     RETURNED: [],
     CANCELLED: [],
+};
+
+const MS_PER_DAY = 86_400_000;
+
+const toUtcDateOnly = (value: string): number => {
+    const [year, month, day] = value.split('T')[0].split('-').map(Number);
+    if (!year || !month || !day) {
+        return NaN;
+    }
+    return Date.UTC(year, month - 1, day);
+};
+
+const getInclusiveRentalDays = (start: string, end: string): number => {
+    const startDate = toUtcDateOnly(start);
+    const endDate = toUtcDateOnly(end);
+    if (Number.isNaN(startDate) || Number.isNaN(endDate)) {
+        return 1;
+    }
+    return Math.max(1, Math.floor((endDate - startDate) / MS_PER_DAY) + 1);
 };
 
 const dueDateInfo = (endDate: string, status: OrderStatus) => {
@@ -82,6 +107,16 @@ const dueDateInfo = (endDate: string, status: OrderStatus) => {
     return null;
 };
 
+const formatPaymentMethod = (method: string) => {
+    if (method === 'PAY_AT_HUB') {
+        return 'Pay at Hub';
+    }
+    if (method === 'CARD') {
+        return 'Card';
+    }
+    return method;
+};
+
 const OrderDetailPage = () => {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
@@ -89,6 +124,7 @@ const OrderDetailPage = () => {
     const queryClient = useQueryClient();
 
     const [confirmAction, setConfirmAction] = useState<ActionConfig | null>(null);
+    const [confirmPaid, setConfirmPaid] = useState<boolean | null>(null);
 
     const { data, isLoading } = useQuery({
         queryKey: ['order', id],
@@ -107,6 +143,21 @@ const OrderDetailPage = () => {
         },
         onError: () => {
             enqueueSnackbar('Failed to update order status.', { variant: 'error' });
+        },
+    });
+
+    const paymentMutation = useMutation({
+        mutationFn: ({ paid }: { paid: boolean }) => patchOrderPaymentStatus(id || '', paid),
+        onSuccess: (_, variables) => {
+            enqueueSnackbar(variables.paid ? 'Payment marked as paid.' : 'Payment marked as unpaid.', {
+                variant: variables.paid ? 'success' : 'warning',
+            });
+            setConfirmPaid(null);
+            queryClient.invalidateQueries({ queryKey: ['order', id] });
+            queryClient.invalidateQueries({ queryKey: ['orders'] });
+        },
+        onError: () => {
+            enqueueSnackbar('Failed to update payment status.', { variant: 'error' });
         },
     });
 
@@ -139,10 +190,44 @@ const OrderDetailPage = () => {
 
     const currentStepIdx = statusSteps.indexOf(order.status);
     const isCancelled = order.status === 'CANCELLED';
-    const actions = actionConfig[order.status] || [];
-    const dueInfo = dueDateInfo(order.endDate, order.status);
+    const actions: UiActionConfig[] = (actionConfig[order.status] || []).map((action) => {
+        if (action.nextStatus === 'PICKED_UP' && order.paymentStatus !== 'PAID') {
+            return {
+                ...action,
+                disabled: true,
+                disabledReason: 'Payment must be marked as paid before pickup.',
+            };
+        }
 
-    const durationDays = Math.max(1, Math.ceil((new Date(order.endDate).getTime() - new Date(order.startDate).getTime()) / 86400000));
+        if (action.nextStatus === 'CANCELLED') {
+            if (order.status !== 'PENDING') {
+                return {
+                    ...action,
+                    disabled: true,
+                    disabledReason: 'Only pending orders can be cancelled.',
+                };
+            }
+            if (order.paymentStatus === 'PAID') {
+                return {
+                    ...action,
+                    disabled: true,
+                    disabledReason: 'Paid orders cannot be cancelled.',
+                };
+            }
+        }
+
+        return {
+            ...action,
+            disabled: false,
+        };
+    });
+    const dueInfo = dueDateInfo(order.endDate, order.status);
+    const isPayAtHubOrder = order.paymentMethod === 'PAY_AT_HUB';
+    const isPaid = order.paymentStatus === 'PAID';
+    const paymentStatusColor = isPaid ? 'success' : 'warning';
+    const canUpdatePayment = isPayAtHubOrder && !isCancelled;
+
+    const durationDays = getInclusiveRentalDays(order.startDate, order.endDate);
 
     return (
         <Box>
@@ -156,19 +241,32 @@ const OrderDetailPage = () => {
                 action={
                     <Box display="flex" gap={1} flexWrap="wrap">
                         {actions.map((action) => (
-                            <Button
-                                key={action.nextStatus}
-                                variant="contained"
-                                color={action.color}
-                                startIcon={action.icon}
-                                onClick={() => setConfirmAction(action)}
-                            >
-                                {action.label}
-                            </Button>
+                            <Tooltip key={action.nextStatus} title={action.disabledReason || ''} disableHoverListener={!action.disabled}>
+                                <span>
+                                    <Button
+                                        variant="contained"
+                                        color={action.color}
+                                        startIcon={action.icon}
+                                        disabled={action.disabled}
+                                        onClick={() => setConfirmAction(action)}
+                                    >
+                                        {action.label}
+                                    </Button>
+                                </span>
+                            </Tooltip>
                         ))}
                         <Button variant="outlined" startIcon={<ArrowBackIcon />} onClick={() => navigate('/orders')}>
                             Back to Orders
                         </Button>
+                        {canUpdatePayment && (
+                            <Button
+                                variant={isPaid ? 'outlined' : 'contained'}
+                                color={isPaid ? 'warning' : 'success'}
+                                onClick={() => setConfirmPaid(!isPaid)}
+                            >
+                                {isPaid ? 'Mark as Unpaid' : 'Mark as Paid'}
+                            </Button>
+                        )}
                     </Box>
                 }
             />
@@ -176,6 +274,12 @@ const OrderDetailPage = () => {
             {dueInfo && (
                 <Alert severity={dueInfo.color} sx={{ mb: 2.5, borderRadius: 2 }} icon={<InfoIcon />}>
                     <strong>{dueInfo.label}</strong> rental end date is {order.endDate}.
+                </Alert>
+            )}
+
+            {order.status === 'CONFIRMED' && order.paymentStatus !== 'PAID' && (
+                <Alert severity="warning" sx={{ mb: 2.5, borderRadius: 2 }}>
+                    This order cannot be marked as picked up until payment status is marked as paid.
                 </Alert>
             )}
 
@@ -218,6 +322,20 @@ const OrderDetailPage = () => {
                                     <Box display="flex" alignItems="center" gap={0.5}>
                                         <PlaceIcon sx={{ fontSize: 14, color: 'primary.main' }} />
                                         <Typography fontWeight={600} fontSize="0.9rem">{order.hubName}</Typography>
+                                    </Box>
+                                </Grid>
+                                <Grid size={{ xs: 6, sm: 3 }}>
+                                    <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase">Payment</Typography>
+                                    <Typography fontWeight={600}>{formatPaymentMethod(order.paymentMethod)}</Typography>
+                                </Grid>
+                                <Grid size={{ xs: 6, sm: 3 }}>
+                                    <Typography variant="caption" color="text.secondary" fontWeight={600} textTransform="uppercase">Payment Status</Typography>
+                                    <Box mt={0.5}>
+                                        <Chip
+                                            size="small"
+                                            color={paymentStatusColor}
+                                            label={order.paymentStatus}
+                                        />
                                     </Box>
                                 </Grid>
                             </Grid>
@@ -355,6 +473,26 @@ const OrderDetailPage = () => {
                     mutation.mutate({ nextStatus: confirmAction.nextStatus });
                 }}
                 onCancel={() => setConfirmAction(null)}
+            />
+
+            <ConfirmDialog
+                open={confirmPaid !== null}
+                title={confirmPaid ? 'Mark as Paid' : 'Mark as Unpaid'}
+                message={
+                    confirmPaid
+                        ? 'Confirm customer payment has been received for this Pay at Hub order.'
+                        : 'Confirm this order should be marked as unpaid.'
+                }
+                confirmLabel={confirmPaid ? 'Mark Paid' : 'Mark Unpaid'}
+                loading={paymentMutation.isPending}
+                danger={confirmPaid === false}
+                onConfirm={() => {
+                    if (confirmPaid === null) {
+                        return;
+                    }
+                    paymentMutation.mutate({ paid: confirmPaid });
+                }}
+                onCancel={() => setConfirmPaid(null)}
             />
         </Box>
     );

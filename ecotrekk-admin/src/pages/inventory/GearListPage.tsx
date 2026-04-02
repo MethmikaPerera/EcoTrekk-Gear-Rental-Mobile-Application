@@ -1,16 +1,18 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useSnackbar } from 'notistack';
+import axios from 'axios';
 import {
     Alert,
     Avatar, Box, Button, Card, CardContent, Chip,
-    FormControl, IconButton, InputAdornment, InputLabel,
-    MenuItem, Select, Stack, Switch, TablePagination, TextField, Tooltip, Typography,
+    Dialog, DialogActions, DialogContent, DialogTitle,
+    FormControl, InputAdornment, InputLabel,
+    LinearProgress, MenuItem, Select, Stack, Switch, TablePagination, TextField, Tooltip, Typography,
 } from '@mui/material';
 import { alpha, styled } from '@mui/material/styles';
 import SearchIcon from '@mui/icons-material/Search';
 import AddIcon from '@mui/icons-material/Add';
 import CategoryIcon from '@mui/icons-material/Category';
-import EditIcon from '@mui/icons-material/Edit';
 import InventoryIcon from '@mui/icons-material/Inventory2';
 import ImageNotSupportedIcon from '@mui/icons-material/ImageNotSupported';
 import PageHeader from '../../components/PageHeader';
@@ -18,11 +20,8 @@ import StatusBadge from '../../components/StatusBadge';
 import EmptyState from '../../components/EmptyState';
 import GearFormModal, { type GearFormData } from './components/GearFormModal';
 import GearCategoryManagerModal from './components/GearCategoryManagerModal';
-import { createAdminGear, getGearCategories, getGears } from '../../api/gearApi';
-import { fetchActiveHubs } from '../../api/hubApi';
+import { createAdminGear, getGearCategories, getGears, patchGearStatus, updateAdminGear } from '../../api/gearApi';
 import { getCloudinarySignature, saveCloudinaryAsset, uploadToCloudinary } from '../../api/uploadApi';
-
-const HUBS = ['Colombo Hub', 'Kandy Hub', 'Galle Hub', 'Ella Hub'];
 
 const selectFieldSx = {
     '& .MuiInputLabel-root': {
@@ -87,23 +86,31 @@ type GearCardItem = {
     id: string;
     name: string;
     category: string;
-    hub: string;
+    imageUrl?: string;
+    description?: string;
     pricePerDay: number;
-    stock: number;
+    depositAmount: number;
+    totalQty: number;
+    availableQty: number;
     status: 'ACTIVE' | 'INACTIVE';
     updatedAt: string;
 };
 
 type ApiGearLike = {
     id?: unknown;
+    gearId?: unknown;
     name?: unknown;
     category?: unknown;
     categoryName?: unknown;
-    hub?: unknown;
-    hubName?: unknown;
+    imageUrl?: unknown;
+    primaryImageUrl?: unknown;
+    description?: unknown;
     pricePerDay?: unknown;
     dailyRentPrice?: unknown;
+    depositAmount?: unknown;
     stock?: unknown;
+    totalQty?: unknown;
+    totalQuantity?: unknown;
     availableQty?: unknown;
     availableQuantity?: unknown;
     quantity?: unknown;
@@ -116,22 +123,50 @@ type ApiGearLike = {
 const toStatus = (value: unknown): 'ACTIVE' | 'INACTIVE' =>
     value === 'INACTIVE' ? 'INACTIVE' : 'ACTIVE';
 
+const formatGearUpdatedDate = (updatedAt: string): string =>
+    new Date(updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+const formatCurrency = (value: number): string => value.toLocaleString();
+
+const getAvailabilityPercent = (availableQty: number, totalQty: number): number => {
+    if (totalQty <= 0) {
+        return 0;
+    }
+    return Math.min(100, Math.max(0, (availableQty / totalQty) * 100));
+};
+
+const getAvailabilityColor = (availableQty: number, totalQty: number): 'error' | 'warning' | 'success' => {
+    if (totalQty <= 0 || availableQty <= 0) {
+        return 'error';
+    }
+
+    const ratio = availableQty / totalQty;
+    if (ratio <= 0.3) {
+        return 'warning';
+    }
+
+    return 'success';
+};
+
 const mapGearFromApi = (raw: ApiGearLike): GearCardItem => ({
-    id: String(raw.id ?? ''),
+    id: String(raw.gearId ?? raw.id ?? ''),
     name: String(raw.name ?? 'Unnamed Gear'),
     category: String(raw.category ?? raw.categoryName ?? 'Uncategorized'),
-    hub: String(raw.hub ?? raw.hubName ?? 'N/A'),
+    imageUrl: raw.imageUrl ? String(raw.imageUrl) : (raw.primaryImageUrl ? String(raw.primaryImageUrl) : undefined),
+    description: raw.description ? String(raw.description) : '',
     pricePerDay: Number(raw.pricePerDay ?? raw.dailyRentPrice ?? 0),
-    stock: Number(raw.stock ?? raw.availableQty ?? raw.availableQuantity ?? raw.quantity ?? 0),
+    depositAmount: Number(raw.depositAmount ?? 0),
+    totalQty: Number(raw.totalQty ?? raw.totalQuantity ?? raw.stock ?? raw.availableQty ?? raw.availableQuantity ?? raw.quantity ?? 0),
+    availableQty: Number(raw.availableQty ?? raw.availableQuantity ?? raw.stock ?? raw.quantity ?? 0),
     status: toStatus(raw.status ?? (raw.isActive ? 'ACTIVE' : 'INACTIVE')),
     updatedAt: String(raw.updatedAt ?? raw.updated_at ?? new Date().toISOString()),
 });
 
 const GearListPage = () => {
+    const { enqueueSnackbar } = useSnackbar();
     const [gears, setGears] = useState<GearCardItem[]>([]);
     const [search, setSearch] = useState('');
     const [categoryFilter, setCategoryFilter] = useState('');
-    const [hubFilter, setHubFilter] = useState('');
     const [statusFilter, setStatusFilter] = useState('');
     const [page, setPage] = useState(0);
     const [rowsPerPage, setRowsPerPage] = useState(12);
@@ -141,7 +176,9 @@ const GearListPage = () => {
     const [openGearModal, setOpenGearModal] = useState(false);
     const [openCategoryModal, setOpenCategoryModal] = useState(false);
     const [savingGear, setSavingGear] = useState(false);
+    const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
     const [editingGearId, setEditingGearId] = useState<string | null>(null);
+    const [selectedGearId, setSelectedGearId] = useState<string | null>(null);
 
     const { data: categoryOptions = [] } = useQuery({
         queryKey: ['gear-category-options'],
@@ -151,12 +188,7 @@ const GearListPage = () => {
         },
     });
 
-    const { data: hubOptions = [] } = useQuery({
-        queryKey: ['active-hub-options'],
-        queryFn: fetchActiveHubs,
-    });
-
-    const isOutOfStock = (stock: number) => stock === 0;
+    const isOutOfStock = (availableQty: number) => availableQty === 0;
 
     const categoryFilterOptions = useMemo(
         () => [...new Set(categoryOptions.map((cat) => cat.name))].sort((a, b) => a.localeCompare(b)),
@@ -166,13 +198,12 @@ const GearListPage = () => {
     const filtered = gears.filter((g) => {
         const matchSearch = g.name.toLowerCase().includes(search.toLowerCase());
         const matchCat = !categoryFilter || g.category === categoryFilter;
-        const matchHub = !hubFilter || g.hub === hubFilter;
         const matchStatus = !statusFilter || g.status === statusFilter;
-        return matchSearch && matchCat && matchHub && matchStatus;
+        return matchSearch && matchCat && matchStatus;
     });
 
     const paginated = filtered;
-    const filteredOutOfStockCount = filtered.filter((g) => isOutOfStock(g.stock)).length;
+    const filteredOutOfStockCount = filtered.filter((g) => isOutOfStock(g.availableQty)).length;
     const filteredActiveCount = filtered.filter((g) => g.status === 'ACTIVE').length;
 
     useEffect(() => {
@@ -210,70 +241,105 @@ const GearListPage = () => {
         [gears, editingGearId]
     );
 
+    const selectedGear = useMemo(
+        () => gears.find((gear) => gear.id === selectedGearId) ?? null,
+        [gears, selectedGearId]
+    );
+
     const gearFormInitialData: Partial<GearFormData> | undefined = editingGear
         ? {
             name: editingGear.name,
             categoryId: String(categoryOptions.find((c) => c.name === editingGear.category)?.id ?? ''),
-            description: '',
-            hub: String(hubOptions.find((h) => h.name === editingGear.hub)?.id ?? ''),
-            availableCount: String(editingGear.stock),
+            description: editingGear.description ?? '',
+            availableCount: String(editingGear.availableQty),
             dailyRentPrice: String(editingGear.pricePerDay),
-            depositAmount: '0',
+            depositAmount: String(editingGear.depositAmount ?? 0),
             isActive: editingGear.status === 'ACTIVE',
-            primaryImageUrl: '',
+            primaryImageUrl: editingGear.imageUrl ?? '',
             imageFile: null,
         }
         : undefined;
 
-    const handleToggleStatus = (id: string) => {
-        setGears((prev) =>
-            prev.map((g) =>
-                g.id === id
-                    ? { ...g, status: g.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE' }
-                    : g
-            )
-        );
+    const handleToggleStatus = async (id: string) => {
+        const currentGear = gears.find((g) => g.id === id);
+        if (!currentGear) {
+            return;
+        }
+
+        const nextStatus: 'ACTIVE' | 'INACTIVE' = currentGear.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+
+        setStatusUpdatingId(id);
+        setFetchError(null);
+        setGears((prev) => prev.map((g) => (g.id === id ? { ...g, status: nextStatus } : g)));
+
+        try {
+            await patchGearStatus(id, nextStatus);
+        } catch {
+            setGears((prev) => prev.map((g) => (g.id === id ? { ...g, status: currentGear.status } : g)));
+            setFetchError('Failed to update gear status. Please try again.');
+        } finally {
+            setStatusUpdatingId(null);
+        }
     };
 
     const handleSaveGear = async (formData: GearFormData) => {
         setSavingGear(true);
         try {
-            if (editingGearId) {
-                setGears((prev) =>
-                    prev.map((gear) =>
-                        gear.id === editingGearId
-                            ? {
-                                ...gear,
-                                name: formData.name,
-                                category: categoryOptions.find((c) => String(c.id) === formData.categoryId)?.name || gear.category,
-                                hub: hubOptions.find((h) => String(h.id) === formData.hub)?.name || gear.hub,
-                                pricePerDay: Number(formData.dailyRentPrice),
-                                stock: Number(formData.availableCount),
-                                status: formData.isActive ? 'ACTIVE' : 'INACTIVE',
-                                updatedAt: new Date().toISOString(),
-                            }
-                            : gear
-                    )
-                );
-            } else {
-                const hubId = Number(formData.hub);
-                const categoryId = Number(formData.categoryId);
+            const categoryId = Number(formData.categoryId);
 
+            if (!Number.isFinite(categoryId) || categoryId <= 0) {
+                throw new Error('Please select a valid category.');
+            }
+
+            if (editingGearId) {
+                const updateResponse = await updateAdminGear(editingGearId, {
+                    name: formData.name,
+                    categoryId,
+                    description: formData.description,
+                    dailyRentPrice: Number(formData.dailyRentPrice),
+                    depositAmount: Number(formData.depositAmount || 0),
+                    availableCount: Number(formData.availableCount),
+                    active: formData.isActive,
+                });
+
+                let updated = mapGearFromApi(updateResponse.data as unknown as ApiGearLike);
+
+                if (formData.imageFile) {
+                    const signature = await getCloudinarySignature({
+                        folderType: 'gears',
+                        entityId: Number(editingGearId),
+                    });
+                    const uploadResult = await uploadToCloudinary(formData.imageFile, signature);
+                    await saveCloudinaryAsset({
+                        folderType: 'gears',
+                        entityId: Number(editingGearId),
+                        secureUrl: uploadResult.secure_url,
+                        publicId: uploadResult.public_id,
+                        primaryImage: true,
+                        sortOrder: 0,
+                    });
+                    updated = { ...updated, imageUrl: uploadResult.secure_url };
+                }
+
+                setGears((prev) => prev.map((gear) => (gear.id === editingGearId ? updated : gear)));
+                enqueueSnackbar('Gear updated successfully.', { variant: 'success' });
+            } else {
                 const createResponse = await createAdminGear({
                     name: formData.name,
                     categoryId,
                     description: formData.description,
                     dailyRentPrice: Number(formData.dailyRentPrice),
                     depositAmount: Number(formData.depositAmount || 0),
-                    hubId,
                     availableCount: Number(formData.availableCount),
                     active: formData.isActive,
                 });
 
                 const created = mapGearFromApi(createResponse.data as unknown as ApiGearLike);
+                let createdWithImage = created;
 
-                if (formData.imageFile && (createResponse.data as any)?.gearId) {
-                    const gearId = Number((createResponse.data as any).gearId);
+                const createdData = createResponse.data as { gearId?: string | number };
+                if (formData.imageFile && createdData.gearId) {
+                    const gearId = Number(createdData.gearId);
                     const signature = await getCloudinarySignature({
                         folderType: 'gears',
                         entityId: gearId,
@@ -287,13 +353,20 @@ const GearListPage = () => {
                         primaryImage: true,
                         sortOrder: 0,
                     });
+                    createdWithImage = { ...created, imageUrl: uploadResult.secure_url };
                 }
 
-                setGears((prev) => [created, ...prev]);
+                setGears((prev) => [createdWithImage, ...prev]);
             }
 
             setOpenGearModal(false);
             setEditingGearId(null);
+        } catch (error) {
+            if (axios.isAxiosError(error)) {
+                const message = (error.response?.data as { message?: string } | undefined)?.message;
+                throw new Error(message || 'Failed to save gear. Please check your inputs and try again.');
+            }
+            throw error;
         } finally {
             setSavingGear(false);
         }
@@ -302,12 +375,11 @@ const GearListPage = () => {
     const clearFilters = () => {
         setSearch('');
         setCategoryFilter('');
-        setHubFilter('');
         setStatusFilter('');
         setPage(0);
     };
 
-    const hasActiveFilters = Boolean(search || categoryFilter || hubFilter || statusFilter);
+    const hasActiveFilters = Boolean(search || categoryFilter || statusFilter);
 
     return (
         <Box>
@@ -386,13 +458,6 @@ const GearListPage = () => {
                             </Select>
                         </FormControl>
                         <FormControl sx={selectFieldSx}>
-                            <InputLabel>Hub</InputLabel>
-                            <Select value={hubFilter} label="Hub" onChange={(e) => { setHubFilter(e.target.value); setPage(0); }}>
-                                <MenuItem value="">All Hubs</MenuItem>
-                                {HUBS.map((hub) => <MenuItem key={hub} value={hub}>{hub}</MenuItem>)}
-                            </Select>
-                        </FormControl>
-                        <FormControl sx={selectFieldSx}>
                             <InputLabel>Status</InputLabel>
                             <Select value={statusFilter} label="Status" onChange={(e) => { setStatusFilter(e.target.value); setPage(0); }}>
                                 <MenuItem value="">All Statuses</MenuItem>
@@ -432,13 +497,6 @@ const GearListPage = () => {
                                     onDelete={() => { setCategoryFilter(''); setPage(0); }}
                                 />
                             )}
-                            {hubFilter && (
-                                <Chip
-                                    label={`Hub: ${hubFilter}`}
-                                    size="small"
-                                    onDelete={() => { setHubFilter(''); setPage(0); }}
-                                />
-                            )}
                             {statusFilter && (
                                 <Chip
                                     label={`Status: ${statusFilter}`}
@@ -472,7 +530,7 @@ const GearListPage = () => {
                                 Gear Catalog
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                                Review stock and availability per hub, then perform quick row-level actions.
+                                Review global inventory levels, then perform quick row-level actions.
                             </Typography>
                         </Box>
                         <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap">
@@ -497,13 +555,13 @@ const GearListPage = () => {
                     <Box sx={{ p: 2 }}>
                         <EmptyState
                             icon={<InventoryIcon sx={{ fontSize: 36, color: 'grey.400' }} />}
-                            title={search || categoryFilter || hubFilter || statusFilter ? 'No matching gear found' : 'No gear items yet'}
+                            title={search || categoryFilter || statusFilter ? 'No matching gear found' : 'No gear items yet'}
                             description={
-                                search || categoryFilter || hubFilter || statusFilter
+                                search || categoryFilter || statusFilter
                                     ? 'Try adjusting your search or filters to find what you\'re looking for.'
                                     : 'Get started by adding your first rental gear item.'
                             }
-                            action={!search && !categoryFilter && !hubFilter && !statusFilter ? {
+                            action={!search && !categoryFilter && !statusFilter ? {
                                 label: 'Add First Gear',
                                 onClick: () => { setEditingGearId(null); setOpenGearModal(true); },
                             } : undefined}
@@ -526,97 +584,94 @@ const GearListPage = () => {
                             <Card
                                 key={gear.id}
                                 variant="outlined"
+                                onClick={() => setSelectedGearId(gear.id)}
                                 sx={{
-                                    borderColor: isOutOfStock(gear.stock)
+                                    borderColor: isOutOfStock(gear.availableQty)
                                         ? alpha('#DC2626', 0.28)
                                         : alpha('#1F4D3A', 0.12),
                                     boxShadow: 'none',
+                                    overflow: 'hidden',
+                                    cursor: 'pointer',
+                                    transition: 'transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease',
+                                    '&:hover': {
+                                        transform: 'translateY(-2px)',
+                                        boxShadow: `0 8px 22px ${alpha('#0F172A', 0.08)}`,
+                                        borderColor: alpha('#1F4D3A', 0.28),
+                                    },
                                 }}
                             >
-                                <CardContent sx={{ p: 1.75, '&:last-child': { pb: 1.75 } }}>
-                                    <Box>
-                                        {/* Top: Avatar/Name and Switch */}
-                                        <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={1}>
-                                            <Box display="flex" alignItems="center" gap={1.25}>
-                                                <Avatar
-                                                    variant="rounded"
-                                                    sx={{
-                                                        width: 52,
-                                                        height: 52,
-                                                        borderRadius: 1.5,
-                                                        bgcolor: alpha('#1F4D3A', 0.08),
-                                                        border: `1px solid ${alpha('#1F4D3A', 0.16)}`,
-                                                    }}
-                                                >
-                                                    <ImageNotSupportedIcon sx={{ color: 'text.secondary', fontSize: 22 }} />
-                                                </Avatar>
-                                                <Box minWidth={0}>
-                                                    <Typography variant="body2" fontWeight={700} noWrap>{gear.name}</Typography>
-                                                </Box>
-                                            </Box>
-                                            <Tooltip title={gear.status === 'ACTIVE' ? 'Deactivate gear' : 'Activate gear'} arrow>
-                                                <PremiumSwitch
-                                                    checked={gear.status === 'ACTIVE'}
-                                                    onChange={() => handleToggleStatus(gear.id)}
-                                                />
-                                            </Tooltip>
-                                        </Box>
-
-                                        {/* Chips */}
-                                        <Stack direction="row" spacing={0.8} useFlexGap flexWrap="wrap" mt={1.25}>
-                                            <Chip label={gear.category} size="small" variant="outlined" sx={{ borderRadius: 1 }} />
-                                            <Chip
-                                                label={gear.hub}
-                                                size="small"
-                                                sx={{
-                                                    fontWeight: 600,
-                                                    bgcolor: alpha('#2563EB', 0.1),
-                                                    color: '#1E3A8A',
-                                                    borderRadius: 1,
-                                                }}
-                                            />
-                                            <StatusBadge status={gear.status} />
-                                        </Stack>
-
-                                        {/* Price and Stock */}
+                                <CardContent sx={{ p: 1.4, '&:last-child': { pb: 1.4 } }}>
+                                    <Box display="flex" gap={1.2}>
                                         <Box
                                             sx={{
-                                                mt: 1.25,
-                                                display: 'grid',
-                                                gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
-                                                gap: 0.8,
+                                                width: 88,
+                                                aspectRatio: '1 / 1',
+                                                borderRadius: 1.4,
+                                                overflow: 'hidden',
+                                                flexShrink: 0,
+                                                bgcolor: alpha('#1F4D3A', 0.07),
+                                                border: `1px solid ${alpha('#1F4D3A', 0.12)}`,
                                             }}
                                         >
-                                            <Box>
-                                                <Typography variant="caption" color="text.secondary">Price / Day</Typography>
-                                                <Typography fontWeight={700} color="primary.main">LKR {gear.pricePerDay.toLocaleString()}</Typography>
-                                            </Box>
-                                            <Box>
-                                                <Typography variant="caption" color="text.secondary">Availability</Typography>
-                                                <Typography
-                                                    fontWeight={700}
-                                                    color={isOutOfStock(gear.stock) ? 'error.main' : 'text.primary'}
-                                                >
-                                                    {gear.stock}
-                                                </Typography>
-                                            </Box>
+                                            {gear.imageUrl ? (
+                                                <Box
+                                                    component="img"
+                                                    src={gear.imageUrl}
+                                                    alt={gear.name}
+                                                    sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                                />
+                                            ) : (
+                                                <Box sx={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}>
+                                                    <Avatar
+                                                        variant="rounded"
+                                                        sx={{
+                                                            width: 42,
+                                                            height: 42,
+                                                            borderRadius: 1.5,
+                                                            bgcolor: alpha('#1F4D3A', 0.12),
+                                                        }}
+                                                    >
+                                                        <ImageNotSupportedIcon sx={{ color: 'text.secondary', fontSize: 22 }} />
+                                                    </Avatar>
+                                                </Box>
+                                            )}
                                         </Box>
 
-                                        {/* Bottom: Updated date and Edit button */}
-                                        <Box display="flex" alignItems="center" justifyContent="space-between" mt={1.5}>
-                                            <Typography variant="caption" color="text.secondary">
-                                                Updated {new Date(gear.updatedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
-                                            </Typography>
-                                            <Tooltip title="Edit gear" arrow>
-                                                <IconButton
+                                        <Box minWidth={0} flex={1}>
+                                            <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={0.8}>
+                                                <Box minWidth={0}>
+                                                    <Typography variant="body1" fontWeight={800} noWrap>{gear.name}</Typography>
+                                                    <Typography variant="caption" color="text.secondary" noWrap>{gear.category}</Typography>
+                                                </Box>
+                                                <Tooltip title={gear.status === 'ACTIVE' ? 'Deactivate gear' : 'Activate gear'} arrow>
+                                                    <PremiumSwitch
+                                                        checked={gear.status === 'ACTIVE'}
+                                                        disabled={statusUpdatingId === gear.id}
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        onChange={() => handleToggleStatus(gear.id)}
+                                                    />
+                                                </Tooltip>
+                                            </Box>
+
+                                            <Stack direction="row" spacing={0.8} mt={0.7} useFlexGap flexWrap="wrap">
+                                                <StatusBadge status={gear.status} />
+                                                <Chip
+                                                    label={`${gear.availableQty}/${gear.totalQty} in stock`}
                                                     size="small"
-                                                    color="primary"
-                                                    onClick={() => { setEditingGearId(gear.id); setOpenGearModal(true); }}
-                                                    sx={{ '&:hover': { bgcolor: alpha('#1F4D3A', 0.08) } }}
-                                                >
-                                                    <EditIcon fontSize="small" />
-                                                </IconButton>
-                                            </Tooltip>
+                                                    color={isOutOfStock(gear.availableQty) ? 'error' : 'default'}
+                                                    variant="outlined"
+                                                    sx={{ borderRadius: 1, fontWeight: 600 }}
+                                                />
+                                            </Stack>
+
+                                            <Box display="flex" alignItems="center" justifyContent="space-between" mt={1}>
+                                                <Typography variant="body2" fontWeight={700} color="primary.main">
+                                                    LKR {formatCurrency(gear.pricePerDay)}
+                                                </Typography>
+                                                <Typography variant="caption" color="text.secondary">
+                                                    Updated {formatGearUpdatedDate(gear.updatedAt)}
+                                                </Typography>
+                                            </Box>
                                         </Box>
                                     </Box>
                                 </CardContent>
@@ -627,7 +682,7 @@ const GearListPage = () => {
 
                 <TablePagination
                     component="div"
-                    count={hubFilter ? filtered.length : totalElements}
+                    count={totalElements}
                     page={page}
                     onPageChange={(_, p) => setPage(p)}
                     rowsPerPage={rowsPerPage}
@@ -644,7 +699,6 @@ const GearListPage = () => {
                 onClose={() => { setOpenGearModal(false); setEditingGearId(null); }}
                 onSubmit={handleSaveGear}
                 categories={categoryOptions.map((cat) => ({ id: String(cat.id), name: cat.name }))}
-                hubs={(hubOptions.length > 0 ? hubOptions : HUBS.map((name, idx) => ({ id: idx + 1, name }))).map((hub) => ({ id: String(hub.id), name: hub.name }))}
                 initialData={gearFormInitialData}
                 loading={savingGear}
             />
@@ -653,6 +707,114 @@ const GearListPage = () => {
                 open={openCategoryModal}
                 onClose={() => setOpenCategoryModal(false)}
             />
+
+            <Dialog
+                open={Boolean(selectedGear)}
+                onClose={() => setSelectedGearId(null)}
+                maxWidth="sm"
+                fullWidth
+            >
+                {selectedGear && (
+                    <>
+                        <DialogTitle sx={{ fontWeight: 800 }}>Gear Details</DialogTitle>
+                        <DialogContent sx={{ pt: 1 }}>
+                            <Box
+                                sx={{
+                                    width: '100%',
+                                    height: 190,
+                                    borderRadius: 2,
+                                    overflow: 'hidden',
+                                    bgcolor: alpha('#1F4D3A', 0.06),
+                                    mb: 2,
+                                }}
+                            >
+                                {selectedGear.imageUrl ? (
+                                    <Box
+                                        component="img"
+                                        src={selectedGear.imageUrl}
+                                        alt={selectedGear.name}
+                                        sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                                    />
+                                ) : (
+                                    <Box sx={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center' }}>
+                                        <ImageNotSupportedIcon sx={{ color: 'text.secondary', fontSize: 36 }} />
+                                    </Box>
+                                )}
+                            </Box>
+
+                            <Stack spacing={1.4}>
+                                <Box>
+                                    <Typography variant="h6" fontWeight={800}>{selectedGear.name}</Typography>
+                                    <Stack direction="row" spacing={1} mt={0.8}>
+                                        <Chip label={selectedGear.category} size="small" variant="outlined" />
+                                        <StatusBadge status={selectedGear.status} />
+                                    </Stack>
+                                </Box>
+
+                                <Box
+                                    sx={{
+                                        display: 'grid',
+                                        gridTemplateColumns: { xs: '1fr', sm: 'repeat(3, minmax(0, 1fr))' },
+                                        gap: 1,
+                                    }}
+                                >
+                                    <Box sx={{ p: 1.2, borderRadius: 1.5, bgcolor: alpha('#1F4D3A', 0.05) }}>
+                                        <Typography variant="caption" color="text.secondary">Daily Rental Price</Typography>
+                                        <Typography fontWeight={800} color="primary.main">LKR {formatCurrency(selectedGear.pricePerDay)}</Typography>
+                                    </Box>
+                                    <Box sx={{ p: 1.2, borderRadius: 1.5, bgcolor: alpha('#166534', 0.06) }}>
+                                        <Typography variant="caption" color="text.secondary">Deposit Amount</Typography>
+                                        <Typography fontWeight={800}>LKR {formatCurrency(selectedGear.depositAmount)}</Typography>
+                                    </Box>
+                                    <Box sx={{ p: 1.2, borderRadius: 1.5, bgcolor: alpha('#0F172A', 0.04) }}>
+                                        <Typography variant="caption" color="text.secondary">Stock Overview</Typography>
+                                        <Typography fontWeight={800}>{selectedGear.availableQty} / {selectedGear.totalQty}</Typography>
+                                    </Box>
+                                </Box>
+
+                                <Box sx={{ p: 1.2, borderRadius: 1.5, bgcolor: alpha('#0F172A', 0.03) }}>
+                                    <Typography variant="caption" color="text.secondary">Description</Typography>
+                                    <Typography variant="body2" sx={{ mt: 0.5 }}>
+                                        {selectedGear.description?.trim() ? selectedGear.description : 'No description available.'}
+                                    </Typography>
+                                </Box>
+
+                                <Box>
+                                    <Box display="flex" justifyContent="space-between" mb={0.6}>
+                                        <Typography variant="caption" color="text.secondary">Availability</Typography>
+                                        <Typography variant="caption" fontWeight={700} color="text.secondary">
+                                            {Math.round(getAvailabilityPercent(selectedGear.availableQty, selectedGear.totalQty))}%
+                                        </Typography>
+                                    </Box>
+                                    <LinearProgress
+                                        variant="determinate"
+                                        value={getAvailabilityPercent(selectedGear.availableQty, selectedGear.totalQty)}
+                                        color={getAvailabilityColor(selectedGear.availableQty, selectedGear.totalQty)}
+                                        sx={{ height: 8, borderRadius: 99 }}
+                                    />
+                                </Box>
+
+                                <Typography variant="caption" color="text.secondary">
+                                    Last Updated: {formatGearUpdatedDate(selectedGear.updatedAt)}
+                                </Typography>
+                            </Stack>
+                        </DialogContent>
+                        <DialogActions sx={{ px: 3, pb: 2 }}>
+                            <Button onClick={() => setSelectedGearId(null)}>Close</Button>
+                            <Button
+                                variant="contained"
+                                onClick={() => {
+                                    setSelectedGearId(null);
+                                    setEditingGearId(selectedGear.id);
+                                    setOpenGearModal(true);
+                                }}
+                            >
+                                Edit Gear
+                            </Button>
+                        </DialogActions>
+                    </>
+                )}
+            </Dialog>
         </Box>
     );
 };

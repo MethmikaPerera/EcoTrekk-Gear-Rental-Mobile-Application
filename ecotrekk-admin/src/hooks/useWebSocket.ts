@@ -43,7 +43,9 @@ export const useWebSocket = () => {
     useEffect(() => {
         const listener: ConnectionListener = (connected) => setIsConnected(connected);
         connectionListeners.add(listener);
-        return () => connectionListeners.delete(listener);
+        return () => {
+            connectionListeners.delete(listener);
+        };
     }, []);
     
     const connect = useCallback(() => {

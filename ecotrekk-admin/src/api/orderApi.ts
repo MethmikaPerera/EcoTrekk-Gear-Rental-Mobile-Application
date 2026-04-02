@@ -1,6 +1,8 @@
 import axiosInstance from './axiosInstance';
 
 export type OrderStatus = 'PENDING' | 'CONFIRMED' | 'PICKED_UP' | 'RETURNED' | 'CANCELLED';
+export type PaymentMethod = 'CARD' | 'PAY_AT_HUB';
+export type PaymentStatus = 'UNPAID' | 'PAID' | 'REFUNDED';
 
 export interface OrderItem {
     id: string;
@@ -27,6 +29,8 @@ export interface Order {
     startDate: string;
     endDate: string;
     status: OrderStatus;
+    paymentMethod: PaymentMethod;
+    paymentStatus: PaymentStatus;
     items: OrderItem[];
     totalAmount: number;
     createdAt: string;
@@ -50,3 +54,6 @@ export const getOrderById = (id: string) =>
 
 export const patchOrderStatus = (id: string, status: OrderStatus, note?: string) =>
     axiosInstance.patch(`/api/admin/orders/${id}/status`, { status, note });
+
+export const patchOrderPaymentStatus = (id: string, paid: boolean) =>
+    axiosInstance.patch(`/api/admin/orders/${id}/payment-status`, { paid });

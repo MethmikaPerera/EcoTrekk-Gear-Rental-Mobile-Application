@@ -50,12 +50,11 @@ interface StatCardProps {
     value: string | number;
     icon: React.ReactNode;
     color: string;
-    trend?: number;
     prefix?: string;
     onClick?: () => void;
 }
 
-const StatCard = ({ title, value, icon, color, trend, prefix, onClick }: StatCardProps) => (
+const StatCard = ({ title, value, icon, color, prefix, onClick }: StatCardProps) => (
     <Card
         sx={{
             height: '100%',
@@ -91,16 +90,6 @@ const StatCard = ({ title, value, icon, color, trend, prefix, onClick }: StatCar
                 <Typography variant="h4" fontWeight={800} mt={0.5} color="text.primary">
                     {prefix}{typeof value === 'number' ? value.toLocaleString() : value}
                 </Typography>
-                {trend !== undefined && (
-                    <Box display="flex" alignItems="center" gap={0.5} mt={0.5}>
-                        {trend >= 0
-                            ? <TrendingUpIcon sx={{ fontSize: 14, color: 'success.main' }} />
-                            : <TrendingDownIcon sx={{ fontSize: 14, color: 'error.main' }} />}
-                        <Typography variant="caption" color={trend >= 0 ? 'success.main' : 'error.main'} fontWeight={700}>
-                            {Math.abs(trend)}% vs yesterday
-                        </Typography>
-                    </Box>
-                )}
             </Box>
             <Avatar sx={{ bgcolor: `${color}18`, width: 52, height: 52 }}>
                 <Box sx={{ color }}>{icon}</Box>
@@ -236,14 +225,14 @@ const DashboardPage = () => {
                 <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
                     <StatCard
                         title="Orders Today" value={metrics?.totalOrdersToday || 0}
-                        icon={<ShoppingCartIcon />} color="#1F4D3A" trend={12}
+                        icon={<ShoppingCartIcon />} color="#1F4D3A"
                         onClick={() => navigate('/orders')}
                     />
                 </Grid>
                 <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
                     <StatCard
                         title="Pending Orders" value={metrics?.pendingOrders || 0}
-                        icon={<PendingActionsIcon />} color="#D4830A" trend={-5}
+                        icon={<PendingActionsIcon />} color="#D4830A"
                         onClick={() => navigate('/orders')}
                     />
                 </Grid>
@@ -257,7 +246,7 @@ const DashboardPage = () => {
                 <Grid size={{ xs: 12, sm: 6, lg: 3 }}>
                     <StatCard
                         title="Revenue Today" value={metrics?.revenueToday || 0}
-                        icon={<AttachMoneyIcon />} color="#0277BD" prefix="LKR " trend={8}
+                        icon={<AttachMoneyIcon />} color="#0277BD" prefix="LKR "
                     />
                 </Grid>
             </Grid>

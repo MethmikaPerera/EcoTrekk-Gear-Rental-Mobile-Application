@@ -159,7 +159,7 @@ const LoginPage = () => {
                         </Button>
                     </Box>
 
-                    <Divider sx={{ my: 3 }}>
+                    {/* <Divider sx={{ my: 3 }}>
                         <Typography variant="caption" color="text.disabled" fontWeight={600}>
                             DEMO CREDENTIALS
                         </Typography>
@@ -188,7 +188,7 @@ const LoginPage = () => {
                         <Typography variant="caption" color="primary.main" fontWeight={600}>
                             Click to auto-fill →
                         </Typography>
-                    </Box>
+                    </Box> */}
                 </CardContent >
             </Card >
         </Box >

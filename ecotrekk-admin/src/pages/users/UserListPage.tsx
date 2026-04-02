@@ -129,6 +129,7 @@ const UserListPage = () => {
                 enqueueSnackbar(`"${confirmTarget.name}" has been activated successfully.`, { variant: 'success' });
             }
             queryClient.invalidateQueries({ queryKey: ['customers'] });
+            queryClient.invalidateQueries({ queryKey: ['customers-stats'] });
             setConfirmTarget(null);
         } catch (error) {
             const apiError = error as AxiosError<ApiErrorBody>;
