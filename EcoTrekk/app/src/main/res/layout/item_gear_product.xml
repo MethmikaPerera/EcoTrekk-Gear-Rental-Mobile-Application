@@ -14,14 +14,34 @@
         android:orientation="vertical"
         android:padding="12dp">
 
-        <com.google.android.material.imageview.ShapeableImageView
-            android:id="@+id/imgGear"
+        <FrameLayout
             android:layout_width="match_parent"
-            android:layout_height="120dp"
-            android:contentDescription="@string/gear_image_content_description"
-            android:scaleType="centerCrop"
-            app:shapeAppearanceOverlay="@style/ShapeAppearance.App.MediumComponent"
-            tools:src="@drawable/ecotrekk_notfound" />
+            android:layout_height="wrap_content">
+
+            <com.google.android.material.imageview.ShapeableImageView
+                android:id="@+id/imgGear"
+                android:layout_width="match_parent"
+                android:layout_height="120dp"
+                android:contentDescription="@string/gear_image_content_description"
+                android:scaleType="centerCrop"
+                app:shapeAppearanceOverlay="@style/ShapeAppearance.App.MediumComponent"
+                tools:src="@drawable/ecotrekk_notfound" />
+
+            <!-- Shown when the gear is in the wishlist (double-tap a card to add it) -->
+            <ImageView
+                android:id="@+id/imgGearFavorite"
+                android:layout_width="32dp"
+                android:layout_height="32dp"
+                android:layout_gravity="top|end"
+                android:layout_margin="8dp"
+                android:background="@drawable/gear_favorite_badge_bg"
+                android:contentDescription="@string/gears_wishlist_badge_description"
+                android:padding="6dp"
+                android:src="@drawable/favorite_24px"
+                android:visibility="gone"
+                app:tint="?attr/colorError" />
+
+        </FrameLayout>
 
         <LinearLayout
             android:layout_width="match_parent"

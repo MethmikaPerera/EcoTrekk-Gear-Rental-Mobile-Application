@@ -29,6 +29,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.math.BigDecimal;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -206,16 +207,57 @@ public class AdminOrderServiceImpl implements AdminOrderService {
                 .orElse(null);
 
         List<AdminOrderItemDTO> orderItems = items.stream()
-                .map(item -> AdminOrderItemDTO.builder()
-                        .id(String.valueOf(item.getId()))
-                        .gearId(String.valueOf(item.getGear().getId()))
-                        .gearName(item.getGear().getName())
-                        .imageUrl(null)
-                        .quantity(item.getQty())
-                        .pricePerDay(item.getDailyRentPrice())
-                        .totalPrice(item.getLineTotal())
-                        .build())
+                .map(item -> {
+                    BigDecimal depositAmount = item.getDepositAmount() != null
+                            ? item.getDepositAmount()
+                            : (item.getGear() != null && item.getGear().getDepositAmount() != null
+                                    ? item.getGear().getDepositAmount()
+                                    : BigDecimal.ZERO);
+                    BigDecimal depositTotal = item.getDepositTotal() != null && item.getDepositTotal().compareTo(BigDecimal.ZERO) > 0
+                            ? item.getDepositTotal()
+                            : depositAmount.multiply(BigDecimal.valueOf(item.getQty()));
+
+                    return AdminOrderItemDTO.builder()
+                            .id(String.valueOf(item.getId()))
+                            .gearId(String.valueOf(item.getGear().getId()))
+                            .gearName(item.getGear().getName())
+                            .imageUrl(null)
+                            .quantity(item.getQty())
+                            .pricePerDay(item.getDailyRentPrice())
+                            .depositAmount(depositAmount)
+                            .depositTotal(depositTotal)
+                            .refundableDeposit(depositTotal)
+                            .totalPrice(item.getLineTotal())
+                            .build();
+                })
                 .toList();
+
+        BigDecimal itemsSubtotal = items.stream()
+                .map(InvoiceItem::getLineTotal)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal itemsDepositTotal = orderItems.stream()
+                .map(AdminOrderItemDTO::getDepositTotal)
+                .filter(java.util.Objects::nonNull)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+
+        BigDecimal subtotal = invoice.getSubtotal() != null && invoice.getSubtotal().compareTo(BigDecimal.ZERO) > 0
+                ? invoice.getSubtotal()
+                : itemsSubtotal;
+
+        BigDecimal depositTotal = invoice.getDepositTotal() != null && invoice.getDepositTotal().compareTo(BigDecimal.ZERO) > 0
+                ? invoice.getDepositTotal()
+                : itemsDepositTotal;
+
+        if (depositTotal.compareTo(BigDecimal.ZERO) == 0 && invoice.getTotalAmount() != null && invoice.getTotalAmount().compareTo(subtotal) > 0) {
+            depositTotal = invoice.getTotalAmount().subtract(subtotal);
+        }
+
+        BigDecimal calculatedTotal = subtotal.add(depositTotal);
+        BigDecimal totalAmount = invoice.getTotalAmount() != null && invoice.getTotalAmount().compareTo(calculatedTotal) >= 0
+                ? invoice.getTotalAmount()
+                : calculatedTotal;
 
         return AdminOrderDTO.builder()
                 .id(invoice.getInvoiceCode())
@@ -233,7 +275,10 @@ public class AdminOrderServiceImpl implements AdminOrderService {
                 .paymentMethod(invoice.getPaymentMethod())
                 .paymentStatus(invoice.getPaymentStatus())
                 .items(orderItems)
-                .totalAmount(invoice.getTotalAmount())
+                .subtotal(subtotal)
+                .depositTotal(depositTotal)
+                .refundableDeposit(depositTotal)
+                .totalAmount(totalAmount)
                 .createdAt(invoice.getCreatedAt())
                 .statusHistory(includeStatusHistory ? buildHistory(invoice.getStatus(), invoice.getCreatedAt(), invoice.getUpdatedAt()) : List.of())
                 .build();

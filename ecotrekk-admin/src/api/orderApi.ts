@@ -11,6 +11,9 @@ export interface OrderItem {
     imageUrl?: string;
     quantity: number;
     pricePerDay: number;
+    depositAmount?: number;
+    depositTotal?: number;
+    refundableDeposit?: number;
     totalPrice: number;
 }
 
@@ -32,6 +35,9 @@ export interface Order {
     paymentMethod: PaymentMethod;
     paymentStatus: PaymentStatus;
     items: OrderItem[];
+    subtotal?: number;
+    depositTotal?: number;
+    refundableDeposit?: number;
     totalAmount: number;
     createdAt: string;
     statusHistory?: { status: OrderStatus; timestamp: string; note?: string }[];

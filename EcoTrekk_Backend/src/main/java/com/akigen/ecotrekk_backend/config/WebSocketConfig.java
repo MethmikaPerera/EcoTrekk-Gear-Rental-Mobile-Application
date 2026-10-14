@@ -30,7 +30,7 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
     public void registerStompEndpoints(StompEndpointRegistry registry) {
         // WebSocket endpoint for clients to connect
         registry.addEndpoint("/api/ws/realtime")
-            .setAllowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*", "http://192.168.*:*", "https://*.trycloudflare.com")
+            .setAllowedOriginPatterns("http://localhost:*", "http://127.0.0.1:*", "http://192.168.*:*", "https://*.trycloudflare.com", "https://*.ngrok-free.app")
                 .setHandshakeHandler(new DefaultHandshakeHandler());
     }
 }

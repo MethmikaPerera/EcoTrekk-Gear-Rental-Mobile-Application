@@ -18,5 +18,8 @@ public class AdminOrderItemDTO {
     private String imageUrl;
     private int quantity;
     private BigDecimal pricePerDay;
+    private BigDecimal depositAmount;
+    private BigDecimal depositTotal;
+    private BigDecimal refundableDeposit;
     private BigDecimal totalPrice;
 }

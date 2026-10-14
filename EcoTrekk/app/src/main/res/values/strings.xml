@@ -257,4 +257,19 @@
     <string name="checkout_auth_subtitle">Confirm your identity to proceed with the checkout</string>
     <string name="checkout_auth_error">Authentication error: %1$s</string>
     <string name="checkout_auth_failed">Authentication failed</string>
+
+    <string name="offline_banner_message">No internet connection</string>
+    <string name="online_banner_message">Back online</string>
+
+    <string name="gears_wishlist_added">Added to your wishlist</string>
+    <string name="gears_wishlist_already">Already in your wishlist</string>
+    <string name="gears_wishlist_offline">You\'re offline. Reconnect to save to your wishlist.</string>
+    <string name="gears_wishlist_add_action">Add to wishlist</string>
+    <string name="gears_open_details_action">Open gear details</string>
+
+    <string name="profile_photo_dialog_title">Update profile photo</string>
+    <string name="profile_photo_take">Take photo</string>
+    <string name="profile_photo_gallery">Choose from gallery</string>
+    <string name="profile_photo_camera_unavailable">Camera not available on this device</string>
+    <string name="gears_wishlist_badge_description">In your wishlist</string>
 </resources>

@@ -4,7 +4,9 @@ import android.content.Context;
 
 import androidx.work.Constraints;
 import androidx.work.ExistingPeriodicWorkPolicy;
+import androidx.work.ExistingWorkPolicy;
 import androidx.work.NetworkType;
+import androidx.work.OneTimeWorkRequest;
 import androidx.work.PeriodicWorkRequest;
 import androidx.work.WorkManager;
 
@@ -37,6 +39,27 @@ public final class LocalDataSyncScheduler {
                 .enqueueUniquePeriodicWork(
                         UNIQUE_WORK_NAME,
                         ExistingPeriodicWorkPolicy.KEEP,
+                        request
+                );
+    }
+
+    /**
+     * Runs one sync immediately (e.g. when the connection comes back) instead of waiting
+     * for the next periodic run. Reuses the same worker and network constraint.
+     */
+    public static void syncNow(Context context) {
+        Constraints constraints = new Constraints.Builder()
+                .setRequiredNetworkType(NetworkType.CONNECTED)
+                .build();
+
+        OneTimeWorkRequest request = new OneTimeWorkRequest.Builder(LocalDataSyncWorker.class)
+                .setConstraints(constraints)
+                .build();
+
+        WorkManager.getInstance(context.getApplicationContext())
+                .enqueueUniqueWork(
+                        UNIQUE_WORK_NAME + "_now",
+                        ExistingWorkPolicy.REPLACE,
                         request
                 );
     }

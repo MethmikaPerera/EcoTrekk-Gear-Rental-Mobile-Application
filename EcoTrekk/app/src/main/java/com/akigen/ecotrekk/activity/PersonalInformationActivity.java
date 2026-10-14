@@ -1,5 +1,6 @@
 package com.akigen.ecotrekk.activity;
 
+import android.content.ActivityNotFoundException;
 import android.content.res.ColorStateList;
 import android.content.Intent;
 import android.net.Uri;
@@ -14,6 +15,7 @@ import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.annotation.NonNull;
 import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.ContextCompat;
+import androidx.core.content.FileProvider;
 
 import com.akigen.ecotrekk.R;
 import com.akigen.ecotrekk.api.ApiService;
@@ -24,6 +26,7 @@ import com.akigen.ecotrekk.dto.CustomerAuthResponse;
 import com.akigen.ecotrekk.dto.CustomerProfileUpdateRequest;
 import com.akigen.ecotrekk.manager.SessionManager;
 import com.bumptech.glide.Glide;
+import com.google.android.material.dialog.MaterialAlertDialogBuilder;
 import com.google.firebase.auth.AuthCredential;
 import com.google.firebase.auth.EmailAuthProvider;
 import com.google.firebase.auth.FirebaseAuth;
@@ -45,13 +48,18 @@ import retrofit2.Response;
 public class PersonalInformationActivity extends AppCompatActivity {
 
     private static final String TAG = "PersonalInfoActivity";
+    private static final String STATE_PENDING_CAMERA_FILE = "pending_camera_file";
+    private static final int PROFILE_IMAGE_MAX_SIZE_PX = 1024;
 
     private ActivityPersonalInformationBinding binding;
     private FirebaseAuth firebaseAuth;
     private SessionManager sessionManager;
     private ApiService apiService;
     private ActivityResultLauncher<String> imagePickerLauncher;
+    private ActivityResultLauncher<Uri> takePictureLauncher;
     private ActivityResultLauncher<Intent> cropImageLauncher;
+    /** Photo being captured by the camera app; kept across a possible activity restart. */
+    private File pendingCameraFile;
 
 
     @Override
@@ -65,14 +73,32 @@ public class PersonalInformationActivity extends AppCompatActivity {
         sessionManager = new SessionManager(this);
         apiService = RetrofitClient.getInstance().getApiService();
 
+        if (savedInstanceState != null) {
+            String pendingPath = savedInstanceState.getString(STATE_PENDING_CAMERA_FILE);
+            if (!TextUtils.isEmpty(pendingPath)) {
+                pendingCameraFile = new File(pendingPath);
+            }
+        }
+
         binding.personalInfoBackButton.setOnClickListener(v -> {
             finish();
         });
 
         imagePickerLauncher = registerForActivityResult(new ActivityResultContracts.GetContent(), this::onImageSelected);
+        takePictureLauncher = registerForActivityResult(
+                new ActivityResultContracts.TakePicture(),
+                success -> {
+                    if (success && pendingCameraFile != null && pendingCameraFile.exists()) {
+                        launchCrop(FileProvider.getUriForFile(this, getFileProviderAuthority(), pendingCameraFile));
+                    } else {
+                        deletePendingCameraFile();
+                    }
+                });
         cropImageLauncher = registerForActivityResult(
                 new ActivityResultContracts.StartActivityForResult(),
                 result -> {
+                    // The raw camera capture is no longer needed once cropping has finished or been cancelled.
+                    deletePendingCameraFile();
                     if (result.getResultCode() == RESULT_OK && result.getData() != null) {
                         Uri croppedUri = UCrop.getOutput(result.getData());
                         if (croppedUri != null) {
@@ -87,7 +113,7 @@ public class PersonalInformationActivity extends AppCompatActivity {
                         }
                     }
                 });
-        binding.personalInfoEditPhotoBtn.setOnClickListener(v -> imagePickerLauncher.launch("image/*"));
+        binding.personalInfoEditPhotoBtn.setOnClickListener(v -> showPhotoSourceDialog());
         binding.personalInfoUpdateProfileBtn.setOnClickListener(v -> updateProfileDetails());
         binding.personalInfoUpdatePasswordBtn.setOnClickListener(v -> changePassword());
 
@@ -191,6 +217,69 @@ public class PersonalInformationActivity extends AppCompatActivity {
             ColorStateList.valueOf(ContextCompat.getColor(this, R.color.md_theme_primary)));
     }
 
+    /** Lets the user choose between taking a new photo and picking one from the gallery. */
+    private void showPhotoSourceDialog() {
+        String[] options = {
+                getString(R.string.profile_photo_take),
+                getString(R.string.profile_photo_gallery)
+        };
+
+        new MaterialAlertDialogBuilder(this)
+                .setTitle(R.string.profile_photo_dialog_title)
+                .setItems(options, (dialog, which) -> {
+                    if (which == 0) {
+                        launchCamera();
+                    } else {
+                        imagePickerLauncher.launch("image/*");
+                    }
+                })
+                .show();
+    }
+
+    /**
+     * Opens the system camera app and asks it to save the photo into our cache folder through a
+     * FileProvider. The system camera does the capture, so no CAMERA permission is needed.
+     */
+    private void launchCamera() {
+        try {
+            File cameraDir = new File(getCacheDir(), "camera");
+            if (!cameraDir.exists() && !cameraDir.mkdirs()) {
+                throw new IOException("Unable to create camera cache folder");
+            }
+
+            deletePendingCameraFile();
+            pendingCameraFile = new File(cameraDir, "profile_capture_" + System.currentTimeMillis() + ".jpg");
+            Uri captureUri = FileProvider.getUriForFile(this, getFileProviderAuthority(), pendingCameraFile);
+            takePictureLauncher.launch(captureUri);
+        } catch (ActivityNotFoundException | IOException | IllegalArgumentException e) {
+            Log.e(TAG, "Unable to open the camera", e);
+            deletePendingCameraFile();
+            Toast.makeText(this, R.string.profile_photo_camera_unavailable, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private String getFileProviderAuthority() {
+        return getPackageName() + ".fileprovider";
+    }
+
+    private void deletePendingCameraFile() {
+        if (pendingCameraFile != null) {
+            if (pendingCameraFile.exists() && !pendingCameraFile.delete()) {
+                Log.w(TAG, "Could not delete temporary camera file");
+            }
+            pendingCameraFile = null;
+        }
+    }
+
+    @Override
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
+        super.onSaveInstanceState(outState);
+        // The camera app may push this activity out of memory; remember where the photo is being saved.
+        if (pendingCameraFile != null) {
+            outState.putString(STATE_PENDING_CAMERA_FILE, pendingCameraFile.getAbsolutePath());
+        }
+    }
+
     private void onImageSelected(Uri imageUri) {
         if (imageUri == null) {
             return;
@@ -206,10 +295,13 @@ public class PersonalInformationActivity extends AppCompatActivity {
         UCrop.Options options = new UCrop.Options();
         options.setFreeStyleCropEnabled(false);
         options.setCompressionFormat(android.graphics.Bitmap.CompressFormat.JPEG);
-        options.setCompressionQuality(90);
+        options.setCompressionQuality(85);
 
+        // Keep the upload small: the backend rejects files over its multipart limit (1 MB by default),
+        // and a full-resolution camera photo is several MB. A profile photo does not need more than this.
         Intent cropIntent = UCrop.of(sourceUri, destinationUri)
             .withAspectRatio(1f, 1f)
+                .withMaxResultSize(PROFILE_IMAGE_MAX_SIZE_PX, PROFILE_IMAGE_MAX_SIZE_PX)
                 .withOptions(options)
                 .getIntent(this);
 

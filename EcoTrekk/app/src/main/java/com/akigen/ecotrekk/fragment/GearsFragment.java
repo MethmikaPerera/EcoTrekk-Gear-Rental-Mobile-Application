@@ -24,18 +24,26 @@ import com.akigen.ecotrekk.R;
 import com.akigen.ecotrekk.activity.SingleGearActivity;
 import com.akigen.ecotrekk.adapter.GearProductAdapter;
 import com.akigen.ecotrekk.client.RetrofitClient;
+import com.akigen.ecotrekk.database.FavoritesHelper;
+import com.akigen.ecotrekk.database.entity.FavoriteEntity;
 import com.akigen.ecotrekk.dto.GearCategoryOptionResponse;
 import com.akigen.ecotrekk.databinding.FragmentGearsBinding;
 import com.akigen.ecotrekk.dto.PublicFeaturedGearResponse;
+import com.akigen.ecotrekk.manager.SessionManager;
 import com.akigen.ecotrekk.model.GearProduct;
+import com.akigen.ecotrekk.network.NetworkUtils;
 import com.google.android.material.bottomnavigation.BottomNavigationView;
 import com.google.android.material.sidesheet.SideSheetBehavior;
 import com.google.android.material.snackbar.Snackbar;
 
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -65,6 +73,9 @@ public class GearsFragment extends Fragment {
     private float accelLast = SensorManager.GRAVITY_EARTH;
     private long lastShakeTime = 0;
 
+    private FavoritesHelper favoritesHelper;
+    private final ExecutorService ioExecutor = Executors.newSingleThreadExecutor();
+
     public GearsFragment() {
         // Required empty public constructor
     }
@@ -79,6 +90,14 @@ public class GearsFragment extends Fragment {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+
+        // Wishlist (double-tap to add) needs the customer id so adds are synced to the server.
+        favoritesHelper = FavoritesHelper.getInstance(requireContext());
+        long customerId = new SessionManager(requireContext()).getCustomerId();
+        if (customerId > 0) {
+            favoritesHelper.initializeWithCustomerId(customerId);
+        }
+
         getParentFragmentManager().setFragmentResultListener(
                 RESULT_KEY_CATEGORY_FILTER,
                 this,
@@ -198,8 +217,66 @@ public class GearsFragment extends Fragment {
 
     private void setupRecyclerView() {
         gearProductAdapter = new GearProductAdapter(this::openSingleGearDetails);
+        gearProductAdapter.setOnGearDoubleTapListener(this::onGearDoubleTapped);
         binding.recyclerGears.setLayoutManager(new GridLayoutManager(requireContext(), 2));
         binding.recyclerGears.setAdapter(gearProductAdapter);
+        observeFavorites();
+    }
+
+    /** Keeps the heart badge on each gear card in sync with the wishlist stored in Room. */
+    private void observeFavorites() {
+        favoritesHelper.observeFavorites().observe(getViewLifecycleOwner(), favorites -> {
+            Set<Long> favoriteIds = new HashSet<>();
+            if (favorites != null) {
+                for (FavoriteEntity favorite : favorites) {
+                    favoriteIds.add(favorite.getGearId());
+                }
+            }
+            gearProductAdapter.setFavoriteIds(favoriteIds);
+        });
+    }
+
+    /** Double-tap on a gear card: add it to the wishlist (add-only, never removes). */
+    private void onGearDoubleTapped(GearProduct product) {
+        if (binding == null || product.getId() <= 0) {
+            return;
+        }
+
+        // Offline adds would be lost: the periodic sync replaces local favorites with the server list.
+        if (!NetworkUtils.isOnline(requireContext())) {
+            Snackbar.make(binding.getRoot(), R.string.gears_wishlist_offline, Snackbar.LENGTH_SHORT).show();
+            return;
+        }
+
+        // isFavorite() is a synchronous Room read, so keep it off the main thread.
+        ioExecutor.execute(() -> {
+            boolean alreadyFavorite = favoritesHelper.isFavorite(product.getId());
+            if (!alreadyFavorite) {
+                favoritesHelper.addToFavoritesWithServerSync(
+                        product.getId(),
+                        product.getName(),
+                        product.getCategory(),
+                        product.getPerDayPrice(),
+                        product.getDepositAmount(),
+                        product.getDescription() != null ? product.getDescription() : "",
+                        product.getImageUrl() != null ? product.getImageUrl() : ""
+                );
+            }
+
+            if (getActivity() == null) {
+                return;
+            }
+            requireActivity().runOnUiThread(() -> {
+                if (!isAdded() || binding == null) {
+                    return;
+                }
+                Snackbar.make(
+                        binding.getRoot(),
+                        alreadyFavorite ? R.string.gears_wishlist_already : R.string.gears_wishlist_added,
+                        Snackbar.LENGTH_SHORT
+                ).show();
+            });
+        });
     }
 
     private void openSingleGearDetails(GearProduct product) {
@@ -616,5 +693,11 @@ public class GearsFragment extends Fragment {
     public void onDestroyView() {
         super.onDestroyView();
         binding = null;
+    }
+
+    @Override
+    public void onDestroy() {
+        super.onDestroy();
+        ioExecutor.shutdown();
     }
 }

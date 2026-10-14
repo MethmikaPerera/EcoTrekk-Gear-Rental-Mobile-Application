@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Overlay pill shown at the top of every screen while the device is offline. Added by ConnectivityBannerController. -->
+<TextView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/connectivityBanner"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:layout_gravity="top|center_horizontal"
+    android:layout_marginTop="8dp"
+    android:accessibilityLiveRegion="polite"
+    android:background="@drawable/connectivity_banner_bg"
+    android:clickable="false"
+    android:drawablePadding="8dp"
+    android:elevation="8dp"
+    android:focusable="false"
+    android:gravity="center_vertical"
+    android:paddingStart="16dp"
+    android:paddingTop="8dp"
+    android:paddingEnd="16dp"
+    android:paddingBottom="8dp"
+    android:textSize="14sp"
+    android:textStyle="bold"
+    android:visibility="gone" />

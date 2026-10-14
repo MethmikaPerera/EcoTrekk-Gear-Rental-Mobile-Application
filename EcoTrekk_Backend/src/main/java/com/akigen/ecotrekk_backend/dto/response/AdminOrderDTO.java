@@ -27,6 +27,9 @@ public class AdminOrderDTO {
     private PaymentMethod paymentMethod;
     private PaymentStatus paymentStatus;
     private List<AdminOrderItemDTO> items;
+    private BigDecimal subtotal;
+    private BigDecimal depositTotal;
+    private BigDecimal refundableDeposit;
     private BigDecimal totalAmount;
     private Instant createdAt;
     private List<AdminOrderStatusHistoryDTO> statusHistory;

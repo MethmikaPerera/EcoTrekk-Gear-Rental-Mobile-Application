@@ -229,6 +229,26 @@ const OrderDetailPage = () => {
 
     const durationDays = getInclusiveRentalDays(order.startDate, order.endDate);
 
+    const itemSubtotal = (order.items || []).reduce((acc, item) => acc + Number(item.totalPrice || 0), 0);
+    const itemDepositTotal = (order.items || []).reduce((acc, item) => {
+        const lineDeposit = item.depositTotal != null
+            ? Number(item.depositTotal)
+            : Number(item.depositAmount ?? item.refundableDeposit ?? 0) * Number(item.quantity || 1);
+        return acc + lineDeposit;
+    }, 0);
+
+    const subtotal = order.subtotal != null && Number(order.subtotal) > 0
+        ? Number(order.subtotal)
+        : itemSubtotal;
+
+    const refundableDeposit = order.depositTotal != null && Number(order.depositTotal) > 0
+        ? Number(order.depositTotal)
+        : (order.refundableDeposit != null && Number(order.refundableDeposit) > 0
+            ? Number(order.refundableDeposit)
+            : (itemDepositTotal > 0 ? itemDepositTotal : Math.max(0, Number(order.totalAmount || 0) - subtotal)));
+
+    const totalPayable = subtotal + refundableDeposit;
+
     return (
         <Box>
             <PageHeader
@@ -352,31 +372,73 @@ const OrderDetailPage = () => {
                                             <TableCell>Item</TableCell>
                                             <TableCell align="center">Qty</TableCell>
                                             <TableCell align="right">Price/Day</TableCell>
+                                            <TableCell align="right">Refundable Deposit</TableCell>
                                             <TableCell align="right">Subtotal</TableCell>
                                         </TableRow>
                                     </TableHead>
                                     <TableBody>
-                                        {order.items.map((item) => (
-                                            <TableRow key={item.id}>
-                                                <TableCell>
-                                                    <Typography variant="body2" fontWeight={600}>{item.gearName}</Typography>
-                                                </TableCell>
-                                                <TableCell align="center">
-                                                    <Chip label={item.quantity} size="small" sx={{ minWidth: 28 }} />
-                                                </TableCell>
-                                                <TableCell align="right">LKR {Number(item.pricePerDay).toLocaleString()}</TableCell>
-                                                <TableCell align="right">
-                                                    <Typography fontWeight={700}>LKR {Number(item.totalPrice).toLocaleString()}</Typography>
-                                                </TableCell>
-                                            </TableRow>
-                                        ))}
+                                        {order.items.map((item) => {
+                                            const itemDeposit = item.depositTotal != null
+                                                ? Number(item.depositTotal)
+                                                : Number(item.depositAmount ?? item.refundableDeposit ?? 0) * Number(item.quantity || 1);
+                                            const unitDeposit = item.depositAmount ?? item.refundableDeposit;
+                                            return (
+                                                <TableRow key={item.id}>
+                                                    <TableCell>
+                                                        <Typography variant="body2" fontWeight={600}>{item.gearName}</Typography>
+                                                    </TableCell>
+                                                    <TableCell align="center">
+                                                        <Chip label={item.quantity} size="small" sx={{ minWidth: 28 }} />
+                                                    </TableCell>
+                                                    <TableCell align="right">LKR {Number(item.pricePerDay).toLocaleString()}</TableCell>
+                                                    <TableCell align="right">
+                                                        <Typography variant="body2" fontWeight={600} color="text.secondary">
+                                                            LKR {itemDeposit.toLocaleString()}
+                                                        </Typography>
+                                                        {item.quantity > 1 && unitDeposit ? (
+                                                            <Typography variant="caption" color="text.disabled" display="block">
+                                                                (LKR {Number(unitDeposit).toLocaleString()} / item)
+                                                            </Typography>
+                                                        ) : null}
+                                                    </TableCell>
+                                                    <TableCell align="right">
+                                                        <Typography fontWeight={700}>LKR {Number(item.totalPrice).toLocaleString()}</Typography>
+                                                    </TableCell>
+                                                </TableRow>
+                                            );
+                                        })}
                                         <TableRow sx={{ bgcolor: 'grey.50' }}>
-                                            <TableCell colSpan={3} align="right">
+                                            <TableCell colSpan={4} align="right">
+                                                <Typography variant="body2" color="text.secondary" fontWeight={600}>Rental Subtotal</Typography>
+                                            </TableCell>
+                                            <TableCell align="right">
+                                                <Typography fontWeight={600}>
+                                                    LKR {subtotal.toLocaleString()}
+                                                </Typography>
+                                            </TableCell>
+                                        </TableRow>
+                                        <TableRow sx={{ bgcolor: 'grey.50' }}>
+                                            <TableCell colSpan={4} align="right">
+                                                <Box display="inline-flex" alignItems="center" gap={0.5}>
+                                                    <Typography variant="body2" color="text.secondary" fontWeight={600}>Refundable Deposit</Typography>
+                                                    <Tooltip title="Refundable upon safe return of the gear.">
+                                                        <InfoIcon sx={{ fontSize: 16, color: 'text.secondary', cursor: 'help' }} />
+                                                    </Tooltip>
+                                                </Box>
+                                            </TableCell>
+                                            <TableCell align="right">
+                                                <Typography fontWeight={600} color="info.main">
+                                                    LKR {refundableDeposit.toLocaleString()}
+                                                </Typography>
+                                            </TableCell>
+                                        </TableRow>
+                                        <TableRow sx={{ bgcolor: 'grey.100' }}>
+                                            <TableCell colSpan={4} align="right">
                                                 <Typography fontWeight={700}>Total Payable</Typography>
                                             </TableCell>
                                             <TableCell align="right">
                                                 <Typography fontWeight={800} color="primary.main" fontSize="1.05rem">
-                                                    LKR {Number(order.totalAmount).toLocaleString()}
+                                                    LKR {totalPayable.toLocaleString()}
                                                 </Typography>
                                             </TableCell>
                                         </TableRow>

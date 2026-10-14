@@ -8,7 +8,7 @@ import retrofit2.converter.gson.GsonConverterFactory;
 
 public class RetrofitClient {
 
-    private static final String BASE_URL = "https://overhead-administered-custody-persian.trycloudflare.com/"; // Backend API Base URL
+    private static final String BASE_URL = "https://causal-truly-liger.ngrok-free.app/"; // Backend API Base URL
     private static RetrofitClient instance;
     private final ApiService apiService;
 

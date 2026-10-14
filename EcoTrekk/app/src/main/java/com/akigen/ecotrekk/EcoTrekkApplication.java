@@ -4,6 +4,7 @@ import android.app.Application;
 
 import com.akigen.ecotrekk.manager.ThemePreferenceManager;
 import com.akigen.ecotrekk.manager.FcmManager;
+import com.akigen.ecotrekk.network.ConnectivityBannerController;
 import com.akigen.ecotrekk.sync.LocalDataSyncScheduler;
 
 public class EcoTrekkApplication extends Application {
@@ -14,5 +15,6 @@ public class EcoTrekkApplication extends Application {
         new ThemePreferenceManager(this).applySavedThemeMode();
         FcmManager.initialize(this);
         LocalDataSyncScheduler.schedule(this);
+        ConnectivityBannerController.install(this);
     }
 }
